@@ -3,7 +3,7 @@
 **最終更新**: 2025-11-13
 **対象**: LiveCap Core を AGPL-3.0 ライセンスで配布する際の確認作業
 
-> ℹ️ 商用ライセンスプログラムは現在停止中です。連絡・質問は Discord
+> ℹ️ LiveCap Core は AGPL-3.0 で提供されています。連絡・質問は Discord
 > コミュニティ (https://discord.gg/hdSV4hJR8Y) を窓口とします。
 
 ---

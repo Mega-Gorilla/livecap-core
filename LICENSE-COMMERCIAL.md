@@ -1,24 +1,14 @@
-# LiveCap Core Commercial License (Program Paused)
+# LiveCap Core Commercial License
 
-We previously explored offering LiveCap Core under a paid commercial license in
-addition to AGPL-3.0. That effort is on hold, and no commercial licenses are
-being issued at this time. The project currently ships exclusively under the
-AGPL-3.0 terms described in `LICENSE`.
+LiveCap Core currently distributes source code and packages solely under
+AGPL-3.0 (see `LICENSE`). A commercial license offering is not available today.
 
-## Current Status
+## Contact
 
-- **Availability**: Commercial licensing is paused indefinitely (last updated
-  2025-11-13).
-- **Contact**: Questions about permissible usage or interest in future
-  licensing options should be directed to the LiveCap community via Discord:
+- Licensing or usage questions: LiveCap Discord community  
   https://discord.gg/hdSV4hJR8Y
+- Security disclosures or urgent issues: coordinate via the same Discord server
+  so maintainers can respond quickly.
 
-## Why keep this file?
-
-- Downstream consumers may still encounter references to a commercial license
-  in historical documentation.
-- If the program resumes, this file will be updated with the applicable terms
-  and contract flow.
-
-For security disclosures or urgent issues, coordinate through the same Discord
-channel so the maintainers can respond promptly.
+This file will be updated if a formal commercial licensing program launches in
+the future.
