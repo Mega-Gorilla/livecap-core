@@ -91,7 +91,7 @@
 | **MistralAI Voxtral** | 多言語ASR | 高 |
 | **aiohttp** | 非同期HTTP | 中 |
 | **ffmpeg-python** | FFmpeg wrapper | 中 |
-| **sherpa-onnx** | ReazonSpeech向け ONNX 推論ランタイム | 高 |
+| **sherpa-onnx** | ReazonSpeech向け ONNX 推論ランタイム (Apache-2.0 / [LICENSE](https://github.com/k2-fsa/sherpa-onnx/blob/master/LICENSE)) | 高 |
 
 **GPLv3との互換性**: ✅ 互換（GPLv3がApache 2.0を明示的に許可）
 **商用利用**: ✅ 無制限
