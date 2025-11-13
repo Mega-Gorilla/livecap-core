@@ -95,15 +95,15 @@ This prints the normalized transcription event that downstream consumers expect.
 ## Testing
 
 ```bash
-# Match the Core Tests workflow
+# Run all tests (matches CI)
 uv sync --extra translation --extra dev
 uv run python -m pytest tests
 
-# Engine adapters (requires the extra you want to validate)
+# Engine adapters (add the extra you want to validate)
 uv sync --extra translation --extra dev --extra engines-torch
 uv run python -m pytest tests/core/engines
 
-# Integration tests (downloads FFmpeg/models, opt in explicitly)
+# Integration tests (opt-in: downloads FFmpeg/models)
 LIVECAP_ENABLE_INTEGRATION=true uv run python -m pytest tests/integration
 ```
 

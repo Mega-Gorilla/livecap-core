@@ -13,7 +13,7 @@ that require network access or large downloads.
 | `tests/core/engines` | Engine factory wiring and adapter registration |
 | `tests/core/i18n` | Translation tables and locale fallbacks |
 | `tests/core/resources` | Resource managers (FFmpeg, model cache, uv profiles) |
-| `tests/transcription` | Pure unit tests for transcription helpers/utilities |
+| `tests/transcription` | Pure transcription helper/unit tests (legacy path kept for Live_Cap_v3 compatibility) |
 | `tests/integration/transcription` | End-to-end pipelines that touch audio, disk, or model downloads |
 
 Add new tests beside the module they validate. If a test requires real model
@@ -28,8 +28,8 @@ with `pytest.mark.skipif` so CI stays green.
 | --- | --- |
 | `translation` | Language packs and text processing dependencies |
 | `dev` | Pytest, typing, linting utilities |
-| `engines-torch` | Torch-based engines such as Whisper or Parakeet |
-| `engines-nemo` | NVIDIA NeMo / ReazonSpeech stack |
+| `engines-torch` | Torch-based engines such as Whisper or ReazonSpeech |
+| `engines-nemo` | NVIDIA NeMo engines such as Parakeet or Canary |
 
 Most day-to-day development uses `translation` + `dev`. Add engine extras when
 you need to exercise specific adapters.
@@ -72,6 +72,8 @@ uv run python -m pytest tests/integration
 
 Unset the variable (or leave it absent) to keep integration tests skipped. Use
 this flow before releasing binaries or when validating hardware/engine combos.
+The same `LIVECAP_ENABLE_INTEGRATION` flag is referenced by README and the
+integration workflow, so keep the name consistent if it ever changes.
 
 ## CI Mapping
 

@@ -77,11 +77,11 @@ print("success:", result.success, "sample text:", event["text"])
 ## テスト
 
 ```bash
-# Core Tests と同じ構成
+# CI と同じテスト
 uv sync --extra translation --extra dev
 uv run python -m pytest tests
 
-# エンジン系 (対象の extra を追加)
+# エンジン系 (必要な extra を追加)
 uv sync --extra translation --extra dev --extra engines-torch
 uv run python -m pytest tests/core/engines
 
