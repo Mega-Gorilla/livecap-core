@@ -1,5 +1,7 @@
 # LiveCap Core
 
+[日本語 READMEはこちら](README.ja.md)
+
 LiveCap Core is the standalone runtime used by the LiveCap GUI and headless
 deployments. It ships the streaming transcription pipeline, engine adapters
 (Whisper/ReazonSpeech/NeMo…), resource managers, and configuration helpers that
