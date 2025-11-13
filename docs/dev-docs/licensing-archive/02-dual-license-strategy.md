@@ -7,7 +7,7 @@
 > ⚠️ **2025-11-13 時点の注記**  
 > 本ドキュメントは将来的にデュアルライセンスを導入する場合の参考資料です。
 > 現在の LiveCap Core は AGPL-3.0 のみで配布しており、最新の手順は
-> [`license-checklist.md`](license-checklist.md) を参照してください。
+> [`docs/dev-docs/licensing/license-checklist.md`](../licensing/license-checklist.md) を参照してください。
 
 ---
 

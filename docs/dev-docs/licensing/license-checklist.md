@@ -29,7 +29,7 @@
 
 ### 2. サードパーティライセンス
 
-- [ ] `docs/dev-docs/oss-strategy/01-license-audit.md` の依存リストを最新化。
+- [ ] `docs/dev-docs/licensing-archive/01-license-audit.md` の依存リストを最新化。
 - [ ] 追加依存がある場合は SPDX 識別子とライセンス本文へのリンクを追記。
 - [ ] Steam や商用配布を行わない場合でも、配布物に第三者ライセンスの
       NOTICE ファイルを含める。
@@ -44,7 +44,7 @@
 
 ### 4. リリース前後の作業
 
-- [ ] `docs/dev-docs/oss-strategy/04-implementation-roadmap.md` の公開前チェックリストを更新。
+- [ ] `docs/dev-docs/licensing-archive/04-implementation-roadmap.md` の公開前チェックリストを更新。
 - [ ] PyPI や GitHub Release のリリースノートにライセンス要約を記載。
 - [ ] Live_Cap_v3 などサブモジュール利用先にも AGPL である旨を通知。
 
@@ -54,9 +54,9 @@
 
 - `LICENSE`
 - `README.md`
-- `docs/dev-docs/oss-strategy/01-license-audit.md`
-- `docs/dev-docs/oss-strategy/02-dual-license-strategy.md` (歴史的参照。現在は商用版停止)
-- `docs/dev-docs/oss-strategy/05-templates.md` (告知テンプレート。必要に応じて調整)
+- `docs/dev-docs/licensing-archive/01-license-audit.md`
+- `docs/dev-docs/licensing-archive/02-dual-license-strategy.md` (歴史的参照)
+- `docs/dev-docs/licensing-archive/05-templates.md` (告知テンプレート。必要に応じて調整)
 
 ---
 
