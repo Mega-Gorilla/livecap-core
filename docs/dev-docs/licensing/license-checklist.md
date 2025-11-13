@@ -23,7 +23,7 @@
 - [ ] ルートの `LICENSE` が AGPL-3.0 の完全な本文であることを確認。
 - [ ] `README.md` の「Licensing」セクションが AGPL-3.0 のみを案内し、
       Discord への問い合わせ先リンクを掲載している。
-- [ ] `LICENSE-COMMERCIAL.md` が「プログラム停止中」である旨を明記している。
+- [ ] `LICENSE-COMMERCIAL.md` が「商用ライセンス提供なし (not available today)」である旨を明記している。
 - [ ] バイナリ/配布物 (PyPI, TestPyPI, Steam など) にも AGPL 表記と
       `LICENSE` が同梱されているかチェック。
 

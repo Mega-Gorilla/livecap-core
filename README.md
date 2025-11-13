@@ -33,8 +33,8 @@ For the full migration plan, refer to
 
 - Issues & feature requests: use the tracker in this repository once it opens
   for public contributions.
-- Security inquiries or commercial licensing: contact PineLab via the channels
-  listed in `LICENSE-COMMERCIAL.md`.
+- Security or usage inquiries: see `LICENSE-COMMERCIAL.md` for Discord contact
+  details.
 
 Stay tuned for contributor guidelines and API documentation as the split
 progresses.
