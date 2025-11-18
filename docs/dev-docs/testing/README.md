@@ -88,5 +88,19 @@ own binaries without committing them.
   suite that mirrors `pytest tests` on `windows-latest` with `translation`+`dev`
   extras and a `ffmpeg-bin` directory configured via `LIVECAP_FFMPEG_BIN`.
 
+### Runner inventory (current state)
+
+| Workflow | Runner | FFmpeg provisioning |
+| --- | --- | --- |
+| `Core Tests` / `Integration Tests` | GitHub-hosted `ubuntu-latest` | `apt-get install ffmpeg`, binaries copied into `./ffmpeg-bin/` for deterministic paths |
+| `Windows Debug Tests` | GitHub-hosted `windows-latest` | `choco install -y ffmpeg`, then copy the real binaries from `$env:ChocolateyInstall\lib\ffmpeg\tools\ffmpeg\bin\ffmpeg.exe` / `ffprobe.exe` into `.\ffmpeg-bin\` so `ffmpeg-python` resolves the correct executable |
+
+For local Windows debugging we currently mirror the workflow by extracting the
+official 6.1 builds from [ffbinaries-prebuilt](
+https://github.com/ffbinaries/ffbinaries-prebuilt/releases) into `ffmpeg-bin/`
+and pointing `LIVECAP_FFMPEG_BIN` at that directory. Self-hosted runners
+(Linux/Windows + GPU) will be documented in a follow-up once those workflows
+land.
+
 Keep this document updated whenever the workflows or extras change so local
 developers can reproduce CI faithfully.
