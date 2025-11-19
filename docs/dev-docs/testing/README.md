@@ -86,7 +86,8 @@ own binaries without committing them.
   `ffmpeg-bin` for MKV coverage.
 - `Windows Core Tests` workflow: runs `pytest tests` on `windows-latest` with
   Python 3.10/3.11/3.12 and `translation`+`dev` extras. Triggered automatically
-  on pull requests to main. Can also be run manually via `workflow_dispatch`.
+  on pushes to main and pull requests to main. Can also be run manually via
+  `workflow_dispatch`.
 - `Verify Self-Hosted Linux Runner` workflow: manual verification workflow that
   validates self-hosted Linux runner environment setup (Python, uv, FFmpeg)
   by downloading portable binaries.
