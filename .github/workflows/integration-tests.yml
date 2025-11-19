@@ -7,14 +7,22 @@ on:
 
 jobs:
   transcription-pipeline:
-    runs-on: ubuntu-latest
-    env:
-      LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
+    strategy:
+      fail-fast: false
+      matrix:
+        # Include both hosted and self-hosted runners
+        # Windows self-hosted is optional/experimental for now, so we can comment it out or keep it if ready.
+        # Based on requirements, we enable self-hosted.
+        os: [ubuntu-latest, [self-hosted, linux], [self-hosted, windows]]
+        
+    runs-on: ${{ matrix.os }}
+    
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Set up Python
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -22,21 +30,17 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v3
 
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
-      - name: Prepare ffmpeg-bin directory
-        run: |
-          mkdir -p ffmpeg-bin
-          if command -v ffmpeg >/dev/null 2>&1; then
-            cp "$(command -v ffmpeg)" ffmpeg-bin/ffmpeg
-          fi
-          if command -v ffprobe >/dev/null 2>&1; then
-            cp "$(command -v ffprobe)" ffmpeg-bin/ffprobe
-          fi
+      - name: Setup LiveCap FFmpeg
+        uses: ./.github/actions/setup-livecap-ffmpeg
+        with:
+          ffmpeg-bin-dir: 'ffmpeg-bin'
 
       - name: Sync dependencies
         run: uv sync --extra translation --extra dev --extra engines-torch
 
       - name: Run integration tests
-        run: uv run python -m pytest tests/integration
+        env:
+          # Python handles forward slashes on all platforms
+          LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
+        run: |
+          uv run python -m pytest tests/integration

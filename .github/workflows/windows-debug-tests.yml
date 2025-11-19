@@ -10,8 +10,6 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
-    env:
-      LIVECAP_FFMPEG_BIN: "${{ github.workspace }}\\ffmpeg-bin"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -24,32 +22,15 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v3
 
-      - name: Install FFmpeg
-        shell: pwsh
-        run: |
-          choco install -y ffmpeg
-          New-Item -ItemType Directory -Force -Path ffmpeg-bin | Out-Null
-
-          $ffmpegFromChoco = Join-Path $env:ChocolateyInstall 'lib\ffmpeg\tools\ffmpeg\bin\ffmpeg.exe'
-          $ffprobeFromChoco = Join-Path $env:ChocolateyInstall 'lib\ffmpeg\tools\ffmpeg\bin\ffprobe.exe'
-
-          if (Test-Path $ffmpegFromChoco) {
-            $ffmpegSource = $ffmpegFromChoco
-          } else {
-            $ffmpegSource = (Get-Command ffmpeg).Source
-          }
-
-          if (Test-Path $ffprobeFromChoco) {
-            $ffprobeSource = $ffprobeFromChoco
-          } else {
-            $ffprobeSource = (Get-Command ffprobe).Source
-          }
-
-          Copy-Item $ffmpegSource ffmpeg-bin\ffmpeg.exe -Force
-          Copy-Item $ffprobeSource ffmpeg-bin\ffprobe.exe -Force
+      - name: Setup LiveCap FFmpeg
+        uses: ./.github/actions/setup-livecap-ffmpeg
+        with:
+          ffmpeg-bin-dir: 'ffmpeg-bin'
 
       - name: Sync dependencies
         run: uv sync --extra translation --extra dev
 
       - name: Run tests
+        env:
+          LIVECAP_FFMPEG_BIN: "${{ github.workspace }}\ffmpeg-bin"
         run: uv run python -m pytest tests
