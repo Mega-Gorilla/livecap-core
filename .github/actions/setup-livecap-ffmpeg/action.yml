@@ -1,0 +1,90 @@
+name: 'Setup LiveCap FFmpeg'
+description: 'Downloads portable FFmpeg binaries (ffmpeg/ffprobe) and places them in ./ffmpeg-bin'
+inputs:
+  ffmpeg-bin-dir:
+    description: 'Directory to place binaries'
+    default: 'ffmpeg-bin'
+    required: false
+runs:
+  using: "composite"
+  steps:
+    - name: Setup FFmpeg (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        TARGET_DIR="${{ inputs.ffmpeg-bin-dir }}"
+        
+        # Check if already exists (simple check)
+        if [ -f "$TARGET_DIR/ffmpeg" ] && [ -f "$TARGET_DIR/ffprobe" ]; then
+          echo "FFmpeg binaries already exist in $TARGET_DIR. Skipping download."
+          exit 0
+        fi
+        
+        echo "Downloading portable binaries (ffbinaries)..."
+        mkdir -p "$TARGET_DIR"
+        WORK_DIR="temp_ffmpeg_install_action"
+        mkdir -p "$WORK_DIR"
+        
+        # Download ffmpeg
+        curl -L -o "$WORK_DIR/ffmpeg.zip" "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.1/ffmpeg-6.1-linux-64.zip"
+        unzip -o "$WORK_DIR/ffmpeg.zip" -d "$WORK_DIR/ffmpeg_out"
+        mv "$WORK_DIR/ffmpeg_out/ffmpeg" "$TARGET_DIR/"
+        
+        # Download ffprobe
+        curl -L -o "$WORK_DIR/ffprobe.zip" "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.1/ffprobe-6.1-linux-64.zip"
+        unzip -o "$WORK_DIR/ffprobe.zip" -d "$WORK_DIR/ffprobe_out"
+        mv "$WORK_DIR/ffprobe_out/ffprobe" "$TARGET_DIR/"
+        
+        # Cleanup
+        rm -rf "$WORK_DIR"
+        
+        # Permissions
+        chmod +x "$TARGET_DIR/ffmpeg" "$TARGET_DIR/ffprobe"
+        echo "FFmpeg setup complete in $TARGET_DIR"
+
+    - name: Setup FFmpeg (Windows)
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        $TargetDir = "${{ inputs.ffmpeg-bin-dir }}"
+        
+        # Convert to absolute path if needed, or assume relative to workspace
+        if (-not (Test-Path $TargetDir)) {
+            New-Item -ItemType Directory -Force -Path $TargetDir | Out-Null
+        }
+        
+        if ((Test-Path (Join-Path $TargetDir "ffmpeg.exe")) -and (Test-Path (Join-Path $TargetDir "ffprobe.exe"))) {
+            Write-Host "FFmpeg binaries already exist in $TargetDir. Skipping download."
+            exit 0
+        }
+        
+        Write-Host "Downloading FFmpeg (gyan.dev essentials)..."
+        $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+        
+        # Create unique temp dir
+        $runTempDir = Join-Path $env:TEMP ("ffmpeg-install-" + [Guid]::NewGuid().ToString())
+        New-Item -ItemType Directory -Force -Path $runTempDir | Out-Null
+        
+        $outputZip = Join-Path $runTempDir "ffmpeg.zip"
+        
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $outputZip -UserAgent "curl/7.68.0"
+            
+            Write-Host "Extracting..."
+            Expand-Archive -Path $outputZip -DestinationPath $runTempDir -Force
+            
+            # Locate bin folder
+            $extractedRoot = Get-ChildItem -Path $runTempDir -Filter "ffmpeg-*-essentials_build" | Select-Object -First 1
+            $binFolder = Join-Path $extractedRoot.FullName "bin"
+            
+            Write-Host "Copying binaries from $binFolder to $TargetDir..."
+            Copy-Item -Path (Join-Path $binFolder "ffmpeg.exe") -Destination $TargetDir
+            Copy-Item -Path (Join-Path $binFolder "ffprobe.exe") -Destination $TargetDir
+            
+        } finally {
+            # Cleanup
+            if (Test-Path $runTempDir) {
+                Remove-Item -Path $runTempDir -Recurse -Force
+            }
+        }
+        Write-Host "FFmpeg setup complete in $TargetDir"

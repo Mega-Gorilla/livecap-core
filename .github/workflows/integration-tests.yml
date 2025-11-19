@@ -7,9 +7,16 @@ on:
 
 jobs:
   transcription-pipeline:
-    runs-on: ubuntu-latest
-    env:
-      LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
+    strategy:
+      fail-fast: false
+      matrix:
+        # Include both hosted and self-hosted runners
+        # Windows self-hosted is optional/experimental for now, so we can comment it out or keep it if ready.
+        # Based on requirements, we enable self-hosted.
+        os: [ubuntu-latest, [self-hosted, linux], [self-hosted, windows]]
+        
+    runs-on: ${{ matrix.os }}
+    
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -22,21 +29,21 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v3
 
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
-      - name: Prepare ffmpeg-bin directory
-        run: |
-          mkdir -p ffmpeg-bin
-          if command -v ffmpeg >/dev/null 2>&1; then
-            cp "$(command -v ffmpeg)" ffmpeg-bin/ffmpeg
-          fi
-          if command -v ffprobe >/dev/null 2>&1; then
-            cp "$(command -v ffprobe)" ffmpeg-bin/ffprobe
-          fi
+      - name: Setup LiveCap FFmpeg
+        uses: ./.github/actions/setup-livecap-ffmpeg
+        with:
+          ffmpeg-bin-dir: 'ffmpeg-bin'
 
       - name: Sync dependencies
         run: uv sync --extra translation --extra dev --extra engines-torch
 
       - name: Run integration tests
-        run: uv run python -m pytest tests/integration
+        shell: bash
+        env:
+          # Use shell expansion to handle path separators implicitly via bash (available on Win via Git Bash)
+          # Or rely on python to handle forward slashes on Windows.
+          # We set absolute path based on workspace.
+          LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
+        run: |
+          # Ensure environment variable is picked up correctly (convert slashes for Windows if needed, but Python usually handles /)
+          uv run python -m pytest tests/integration
