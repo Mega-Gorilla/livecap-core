@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+import unicodedata
+from pathlib import Path
 
-__all__ = ["normalize_en", "normalize_ja", "normalize_text"]
+__all__ = ["normalize_en", "normalize_ja", "normalize_text", "get_language_from_filename"]
 
 
 def _collapse_spaces(text: str) -> str:
@@ -27,15 +29,20 @@ def normalize_en(text: str, *, keep_apostrophes: bool = False) -> str:
     return _collapse_spaces(cleaned)
 
 
-def normalize_ja(text: str, *, strip_punctuation: bool = True) -> str:
+def normalize_ja(
+    text: str, *, strip_punctuation: bool = True, normalize_width: bool = False
+) -> str:
     """
     Normalize Japanese transcripts:
     - trim surrounding whitespace
+    - optionally normalize full/half-width characters (NFKC)
     - optionally strip common punctuation
     - remove all whitespace (half/full-width)
     """
 
     cleaned = text.strip()
+    if normalize_width:
+        cleaned = unicodedata.normalize("NFKC", cleaned)
     if strip_punctuation:
         cleaned = (
             cleaned.replace("。", "")
@@ -56,3 +63,21 @@ def normalize_text(text: str, *, lang: str) -> str:
     if lang == "ja":
         return normalize_ja(text)
     raise ValueError(f"Unsupported language for normalization: {lang}")
+
+
+def get_language_from_filename(filename: str | Path) -> str:
+    """
+    Extract language code from an asset filename stem suffix.
+
+    Returns:
+        Language code ('en', 'ja', 'zh', ...) or 'unknown'.
+    """
+
+    stem = Path(filename).stem
+    if stem.endswith("_en"):
+        return "en"
+    if stem.endswith("_ja"):
+        return "ja"
+    if stem.endswith("_zh"):
+        return "zh"
+    return "unknown"

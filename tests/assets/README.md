@@ -26,3 +26,14 @@ This directory holds lightweight audio fixtures plus optional source corpora use
 
 ## Optional environment variables for benchmarks
 - `LIVECAP_LIBRISPEECH_DIR` and `LIVECAP_JSUT_DIR` can point to larger local corpora for benchmark-style tests; tests should skip gracefully when these are absent.
+
+## Licensing and attribution
+- LibriSpeech test-clean
+  - License: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+  - Source: https://www.openslr.org/12
+  - Commercial use: permitted
+- JSUT v1.1
+  - License: research / non-commercial only
+  - Source: https://sites.google.com/site/shinnosuketakamichi/publication/jsut
+  - Commercial use: requires separate permission
+- Derived short clips in `tests/assets/audio/` inherit the licenses of their source corpora. Use only for development/CI; provide alternative fixtures or obtain permission for commercial deployments.
