@@ -7,3 +7,7 @@
 
 # Local FFmpeg binaries for offline tests
 ffmpeg-bin/
+
+# Local corpora for tests (JSUT, LibriSpeech, etc.)
+tests/assets/source/
+tests/assets/audio/*.flac
