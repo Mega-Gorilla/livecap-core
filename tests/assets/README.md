@@ -11,7 +11,11 @@ This directory holds lightweight audio fixtures plus optional source corpora use
 ## Naming (tracked clips)
 - `<corpus>_<subset>_<utterance>_<lang>.wav` (and same stem for `.txt` transcripts).
 - Examples: `librispeech_test-clean_1089-134686-0001_en.wav`, `jsut_basic5000_0001_ja.wav`.
-- Transcript file format/fields will be finalized during the PR review; for now keep a plain text transcript with matching stem.
+
+## Transcript format
+- UTF-8 plain text, single line, trailing newline, stem matches the WAV (`<corpus>_<subset>_<utterance>_<lang>.txt`).
+- Content mirrors the source corpus text as-is (LibriSpeech: uppercase, original punctuation; JSUT: original Japanese punctuation).
+- No extra quoting or metadata in the `.txt`. If metadata is needed later, add a parallel `<stem>.meta.json` instead of changing the `.txt` contents.
 
 ## Generation & normalization
 - Target: 3–8 seconds, 16 kHz mono, peak around -1 dBFS, keep ~0.2–0.3 s of leading/trailing silence.
