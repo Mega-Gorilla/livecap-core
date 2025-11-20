@@ -22,6 +22,7 @@ def normalize_en(text: str, *, keep_apostrophes: bool = False) -> str:
         cleaned = re.sub(r"[^a-z0-9\s']", " ", cleaned)
         cleaned = cleaned.replace("'", " ")
     else:
+        cleaned = cleaned.replace("'", "")
         cleaned = re.sub(r"[^a-z0-9\s]", " ", cleaned)
     return _collapse_spaces(cleaned)
 
