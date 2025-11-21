@@ -175,10 +175,12 @@ jobs:
         shell: pwsh
         run: |
           uv python pin "$Env:PYTHON_EXE"
-          # Force install CUDA-enabled PyTorch from official index (PyPI defaults to CPU on Windows)
-          Write-Host "Installing CUDA-enabled PyTorch (cu124)..."
-          uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+          # First, sync standard dependencies (this installs CPU torch on Windows)
           uv sync --extra translation --extra dev --extra engines-torch --extra engines-nemo
+          
+          # THEN, overwrite with CUDA-enabled PyTorch from official index
+          Write-Host "Overwriting with CUDA-enabled PyTorch (cu124)..."
+          uv pip install --reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
       - name: Debug Windows GPU Environment
         if: runner.os == 'Windows'
