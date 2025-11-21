@@ -54,19 +54,22 @@ class ModelCacheStatus:
 
 
 CASES: list[EngineSmokeCase] = [
-    EngineSmokeCase(
-        id="reazonspeech_cpu_ja",
-        engine="reazonspeech",
-        language="ja",
-        audio_stem="jsut_basic5000_0001_ja",
-        device="cpu",
-    ),
+    # ReazonSpeech on CPU is disabled due to sherpa-onnx/onnxruntime ABI issues on hosted runners.
+    # See PR #34 for details. It is tested on GPU self-hosted runners instead.
     EngineSmokeCase(
         id="whispers2t_cpu_en",
         engine="whispers2t_base",
         language="en",
         audio_stem="librispeech_test-clean_1089-134686-0001_en",
         device="cpu",
+    ),
+    EngineSmokeCase(
+        id="reazonspeech_gpu_ja",
+        engine="reazonspeech",
+        language="ja",
+        audio_stem="jsut_basic5000_0001_ja",
+        device="cuda",
+        requires_gpu=True,
     ),
     EngineSmokeCase(
         id="whispers2t_gpu_en",
