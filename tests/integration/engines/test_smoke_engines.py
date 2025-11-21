@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,6 +15,10 @@ from livecap_core.transcription import FileTranscriptionPipeline
 from tests.utils.text_normalization import normalize_text
 
 pytestmark = pytest.mark.engine_smoke
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets" / "audio"
 GPU_ENABLED = os.getenv("LIVECAP_ENABLE_GPU_SMOKE") == "1"
