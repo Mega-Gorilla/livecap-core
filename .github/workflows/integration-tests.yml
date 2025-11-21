@@ -83,6 +83,9 @@ jobs:
       - name: Sync dependencies
         run: uv sync --extra translation --extra dev --extra engines-torch
 
+      - name: Install ReazonSpeech runtime deps (onnxruntime)
+        run: uv pip install --system onnxruntime==1.19.2
+
       - name: Warm engine caches (CPU)
         env:
           LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
