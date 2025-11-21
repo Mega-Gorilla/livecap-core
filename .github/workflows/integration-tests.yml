@@ -83,7 +83,7 @@ jobs:
       - name: Sync dependencies
         run: uv sync --extra translation --extra dev --extra engines-torch
 
-      - name: Warm ReazonSpeech model cache (CPU)
+      - name: Warm engine caches (CPU)
         env:
           LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
         run: |
@@ -91,18 +91,22 @@ jobs:
           from engines.engine_factory import EngineFactory
           from livecap_core.config.defaults import get_default_config
 
-          cfg = get_default_config()
-          transcription = cfg["transcription"]
-          transcription["engine"] = "reazonspeech"
-          transcription["input_language"] = "ja"
-          engine = EngineFactory.create_engine(
-              engine_type="reazonspeech",
-              device="cpu",
-              config=cfg,
-          )
-          engine.load_model()
-          models_dir = engine.model_manager.get_models_dir(engine.engine_name)
-          print(f"Cached ReazonSpeech model at: {models_dir}")
+          def warm(engine_type: str, device: str, lang: str) -> None:
+              cfg = get_default_config()
+              transcription = cfg["transcription"]
+              transcription["engine"] = engine_type
+              transcription["input_language"] = lang
+              engine = EngineFactory.create_engine(
+                  engine_type=engine_type,
+                  device=device,
+                  config=cfg,
+              )
+              engine.load_model()
+              models_dir = engine.model_manager.get_models_dir(engine.engine_name)
+              print(f"[{engine_type}/{device}] cached at: {models_dir}")
+
+          warm("reazonspeech", "cpu", "ja")
+          warm("whispers2t_base", "cpu", "en")
           PY
 
       - name: Run engine smoke tests (CPU)
@@ -172,6 +176,63 @@ jobs:
         run: |
           uv python pin "$Env:PYTHON_EXE"
           uv sync --extra translation --extra dev --extra engines-torch --extra engines-nemo
+
+      - name: Warm engine caches (GPU / self-hosted, Linux)
+        if: matrix.os == '[self-hosted, linux]'
+        shell: bash
+        env:
+          LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
+        run: |
+          uv run python - <<'PY'
+          from engines.engine_factory import EngineFactory
+          from livecap_core.config.defaults import get_default_config
+
+          def warm(engine_type: str, device: str, lang: str) -> None:
+              cfg = get_default_config()
+              transcription = cfg["transcription"]
+              transcription["engine"] = engine_type
+              transcription["input_language"] = lang
+              engine = EngineFactory.create_engine(
+                  engine_type=engine_type,
+                  device=device,
+                  config=cfg,
+              )
+              engine.load_model()
+              models_dir = engine.model_manager.get_models_dir(engine.engine_name)
+              print(f"[{engine_type}/{device}] cached at: {models_dir}")
+
+          warm("whispers2t_base", "cuda", "en")
+          warm("parakeet", "cuda", "en")
+          PY
+
+      - name: Warm engine caches (GPU / self-hosted, Windows)
+        if: matrix.os == '[self-hosted, windows]'
+        shell: pwsh
+        env:
+          LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
+        run: |
+          uv python pin "$Env:PYTHON_EXE"
+          uv run python - <<'PY'
+          from engines.engine_factory import EngineFactory
+          from livecap_core.config.defaults import get_default_config
+
+          def warm(engine_type: str, device: str, lang: str) -> None:
+              cfg = get_default_config()
+              transcription = cfg["transcription"]
+              transcription["engine"] = engine_type
+              transcription["input_language"] = lang
+              engine = EngineFactory.create_engine(
+                  engine_type=engine_type,
+                  device=device,
+                  config=cfg,
+              )
+              engine.load_model()
+              models_dir = engine.model_manager.get_models_dir(engine.engine_name)
+              print(f"[{engine_type}/{device}] cached at: {models_dir}")
+
+          warm("whispers2t_base", "cuda", "en")
+          warm("parakeet", "cuda", "en")
+          PY
 
       - name: Run engine smoke tests (GPU / self-hosted, Linux)
         if: matrix.os == '[self-hosted, linux]'
