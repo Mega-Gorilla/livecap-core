@@ -128,6 +128,9 @@ def _guard_gpu(case: EngineSmokeCase) -> None:
         _skip_or_fail(f"torch is required for GPU smoke tests: {exc}")
         return
     if not torch.cuda.is_available():  # pragma: no cover - environment dependent
+        if case.engine == "reazonspeech":
+            # Allow CPU fallback for ReazonSpeech on GPU runners without CUDA (e.g. Windows CI)
+            return
         _skip_or_fail("CUDA is not available on this runner.")
 
 
@@ -192,10 +195,16 @@ def test_engine_smoke_with_real_audio(case: EngineSmokeCase, tmp_path: Path, cap
     expected_text = _load_expected(case)
     config = _build_config(case)
 
+    # Determine actual device (fallback to cpu if cuda requested but unavailable for reazonspeech)
+    device = case.device
+    import torch
+    if case.engine == "reazonspeech" and device == "cuda" and not torch.cuda.is_available():
+        device = "cpu"
+
     try:
         engine = EngineFactory.create_engine(
             engine_type=case.engine,
-            device=case.device,
+            device=device,
             config=config,
         )
     except ImportError as exc:
