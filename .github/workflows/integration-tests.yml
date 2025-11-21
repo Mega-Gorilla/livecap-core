@@ -100,16 +100,14 @@ jobs:
             echo "Extension module not found!"
           fi
 
-      - name: Force install compatible onnxruntime
-        run: |
-          echo "Downgrading onnxruntime to match sherpa-onnx requirement (1.17.1)..."
-          uv pip install --system onnxruntime==1.17.1
-          uv run python -c "import onnxruntime; print(f'Installed ORT: {onnxruntime.__version__}')"
-
       - name: Warm engine caches (CPU)
         env:
           LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
         run: |
+          # Ensure we are using the correct onnxruntime version within THIS uv environment
+          echo "Forcing onnxruntime==1.17.1 installation..."
+          uv pip install onnxruntime==1.17.1
+          
           # Robustly find libonnxruntime.so via python site-packages
           SITE_PACKAGES=$(uv run python -c "import site; print(site.getsitepackages()[0])")
           echo "Site packages: $SITE_PACKAGES"
@@ -136,6 +134,9 @@ jobs:
           fi
 
           uv run python - <<'PY'
+          import onnxruntime
+          print(f"Runtime ORT version: {onnxruntime.__version__}")
+          
           from engines.engine_factory import EngineFactory
           from livecap_core.config.defaults import get_default_config
 
