@@ -101,8 +101,15 @@ jobs:
           LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
         run: |
           uv run python - <<'PY'
+          import os
+          import pathlib
+          import onnxruntime  # noqa: F401
           from engines.engine_factory import EngineFactory
           from livecap_core.config.defaults import get_default_config
+
+          # Ensure onnxruntime's bundled libs are visible
+          ort_lib_dir = pathlib.Path(onnxruntime.__file__).parent
+          os.environ["LD_LIBRARY_PATH"] = f"{ort_lib_dir}:{os.environ.get('LD_LIBRARY_PATH', '')}"
 
           def warm(engine_type: str, device: str, lang: str) -> None:
               cfg = get_default_config()
