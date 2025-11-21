@@ -86,6 +86,16 @@ jobs:
       - name: Install ReazonSpeech runtime deps (onnxruntime)
         run: uv pip install --system onnxruntime==1.19.2
 
+      - name: Export onnxruntime lib path (LD_LIBRARY_PATH)
+        run: |
+          ORT_LIB_DIR=$(uv run python - <<'PY'
+          import onnxruntime
+          import pathlib
+          print(pathlib.Path(onnxruntime.__file__).parent)
+          PY
+          )
+          echo "LD_LIBRARY_PATH=${ORT_LIB_DIR}:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
       - name: Warm engine caches (CPU)
         env:
           LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
