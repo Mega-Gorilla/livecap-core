@@ -91,10 +91,20 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python (Ubuntu)
+        if: matrix.os == '[self-hosted, linux]'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Use preinstalled Python (Windows self-hosted)
+        if: matrix.os == '[self-hosted, windows]'
+        shell: pwsh
+        run: |
+          $python = Get-Command python3.12 | Select-Object -ExpandProperty Source
+          if (-not $python) { throw "python3.12 not found on runner" }
+          echo "Using python at $python"
+          echo "PYTHON_EXE=$python" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v3
@@ -105,7 +115,11 @@ jobs:
           ffmpeg-bin-dir: 'ffmpeg-bin'
 
       - name: Sync dependencies
-        run: uv sync --extra translation --extra dev --extra engines-torch --extra engines-nemo
+        run: |
+          if [ "${{ matrix.os }}" = "[self-hosted, windows]" ]; then
+            uv python pin "$PYTHON_EXE"
+          fi
+          uv sync --extra translation --extra dev --extra engines-torch --extra engines-nemo
 
       - name: Run engine smoke tests (GPU / self-hosted)
         env:
@@ -113,4 +127,7 @@ jobs:
           LIVECAP_ENABLE_GPU_SMOKE: ${{ vars.LIVECAP_ENABLE_GPU_SMOKE }}
           LIVECAP_REQUIRE_ENGINE_SMOKE: ${{ vars.LIVECAP_REQUIRE_ENGINE_SMOKE }}
         run: |
+          if [ "${{ matrix.os }}" = "[self-hosted, windows]" ]; then
+            uv python pin "$PYTHON_EXE"
+          fi
           uv run python -m pytest tests/integration/engines -m "engine_smoke and gpu"
