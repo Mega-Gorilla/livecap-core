@@ -83,6 +83,23 @@ jobs:
       - name: Sync dependencies
         run: uv sync --extra translation --extra dev --extra engines-torch
 
+      - name: Debug shared libraries
+        run: |
+          SITE_PACKAGES=$(uv run python -c "import site; print(site.getsitepackages()[0])")
+          SHERPA_LIB="$SITE_PACKAGES/sherpa_onnx/lib"
+          
+          echo "Listing $SHERPA_LIB:"
+          ls -l "$SHERPA_LIB" || echo "Directory not found"
+          
+          echo "Checking dependencies of _sherpa_onnx extension:"
+          EXT_MOD=$(find "$SITE_PACKAGES/sherpa_onnx" -name "_sherpa_onnx*.so" | head -n 1)
+          if [ -n "$EXT_MOD" ]; then
+            echo "Target: $EXT_MOD"
+            ldd "$EXT_MOD"
+          else
+            echo "Extension module not found!"
+          fi
+
       - name: Warm engine caches (CPU)
         env:
           LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
