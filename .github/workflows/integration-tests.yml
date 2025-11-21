@@ -84,7 +84,7 @@ jobs:
         run: uv sync --extra translation --extra dev --extra engines-torch
 
       - name: Install ReazonSpeech runtime deps (onnxruntime + numpy<2)
-        run: uv pip install --system "numpy<2" onnxruntime==1.17.1
+        run: uv pip install --python .venv/bin/python --reinstall "numpy<2" onnxruntime==1.17.1
 
       - name: Export onnxruntime lib path (LD_LIBRARY_PATH)
         run: |
