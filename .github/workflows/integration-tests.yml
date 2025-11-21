@@ -104,27 +104,23 @@ jobs:
         env:
           LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
         run: |
-          # Robustly find sherpa-onnx lib directory via python
+          # Robustly find libonnxruntime.so via python site-packages
           SITE_PACKAGES=$(uv run python -c "import site; print(site.getsitepackages()[0])")
           echo "Site packages: $SITE_PACKAGES"
           
-          # Primary target: sherpa_onnx/lib (where bundled libs live)
-          SHERPA_LIB="$SITE_PACKAGES/sherpa_onnx/lib"
+          # Search for the actual shared library, not just the extension dir
+          echo "Searching for libonnxruntime.so in site-packages..."
+          LIB_PATH=$(find "$SITE_PACKAGES" -name "libonnxruntime.so*" | head -n 1)
           
-          if [ -d "$SHERPA_LIB" ]; then
-            echo "Found sherpa lib dir: $SHERPA_LIB"
-            export LD_LIBRARY_PATH="$SHERPA_LIB:$LD_LIBRARY_PATH"
+          if [ -n "$LIB_PATH" ]; then
+             LIB_DIR=$(dirname "$LIB_PATH")
+             echo "Found libonnxruntime.so at: $LIB_PATH"
+             echo "Setting LD_LIBRARY_PATH to: $LIB_DIR"
+             export LD_LIBRARY_PATH="$LIB_DIR:$LD_LIBRARY_PATH"
           else
-            echo "WARNING: $SHERPA_LIB does not exist. Searching recursively in site-packages..."
-            # Fallback: find anywhere in site-packages
-            LIB_PATH=$(find "$SITE_PACKAGES" -name "libonnxruntime.so*" | head -n 1)
-            if [ -n "$LIB_PATH" ]; then
-               LIB_DIR=$(dirname "$LIB_PATH")
-               echo "Found fallback lib dir: $LIB_DIR"
-               export LD_LIBRARY_PATH="$LIB_DIR:$LD_LIBRARY_PATH"
-            else
-               echo "ERROR: libonnxruntime.so not found in site-packages. ReazonSpeech may fail."
-            fi
+             echo "ERROR: libonnxruntime.so not found anywhere in site-packages."
+             # List site-packages to help debug if this fails
+             ls -F "$SITE_PACKAGES" || true
           fi
 
           uv run python - <<'PY'
