@@ -86,6 +86,11 @@ CASES: list[EngineSmokeCase] = [
     ),
 ]
 
+PARAM_CASES = [
+    pytest.param(case, marks=pytest.mark.gpu) if case.requires_gpu else pytest.param(case)
+    for case in CASES
+]
+
 
 def _skip_or_fail(reason: str) -> None:
     if STRICT:
@@ -175,7 +180,7 @@ def _assert_transcript_matches(observed: str, expected: str, lang: str, case: En
         assert expected_norm in observed_norm, f"Expected '{expected_norm}' to appear in '{observed_norm}'"
 
 
-@pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
+@pytest.mark.parametrize("case", PARAM_CASES, ids=lambda c: c.id)
 def test_engine_smoke_with_real_audio(case: EngineSmokeCase, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level("INFO")
     _guard_gpu(case)
