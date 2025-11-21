@@ -228,11 +228,11 @@ jobs:
               )
               engine.load_model()
               models_dir = engine.model_manager.get_models_dir(engine.engine_name)
-              print(f"[{engine_type}/{device}] cached at: {models_dir}")
+              print(f'[{engine_type}/{device}] cached at: {models_dir}')
 
-          warm("reazonspeech", "cuda", "ja")
-          warm("whispers2t_base", "cuda", "en")
-          warm("parakeet", "cuda", "en")
+          warm('reazonspeech', 'cuda', 'ja')
+          warm('whispers2t_base', 'cuda', 'en')
+          warm('parakeet', 'cuda', 'en')
           "@
           
           $script | Out-File warmup.py -Encoding utf8
