@@ -175,7 +175,20 @@ jobs:
         shell: pwsh
         run: |
           uv python pin "$Env:PYTHON_EXE"
+          # Force install CUDA-enabled PyTorch from official index (PyPI defaults to CPU on Windows)
+          Write-Host "Installing CUDA-enabled PyTorch (cu124)..."
+          uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
           uv sync --extra translation --extra dev --extra engines-torch --extra engines-nemo
+
+      - name: Debug Windows GPU Environment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "--- System Info ---"
+          try { nvidia-smi | Out-String | Write-Host } catch { Write-Host "nvidia-smi failed" }
+          
+          Write-Host "--- PyTorch Debug ---"
+          uv run python -c "import torch; import os; print(f'Torch: {torch.__version__}'); print(f'CUDA built: {torch.version.cuda}'); print(f'Is available: {torch.cuda.is_available()}');"
 
       - name: Warm engine caches (GPU / self-hosted, Linux)
         if: runner.os == 'Linux'
