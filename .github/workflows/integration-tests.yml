@@ -270,6 +270,25 @@ jobs:
           # Use python directly
           python warmup.py
 
+      - name: Debug Cache Path (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "--- Python AppDirs Check ---"
+          # Check what python thinks the cache dir is (using the venv python)
+          python -c "import appdirs; print(f'AppDirs Cache: {appdirs.user_cache_dir(\"LiveCap\", \"PineLab\")}')"
+          
+          Write-Host "--- Cache Directory Content ---"
+          # Construct expected path based on AppDirs standard
+          $cacheDir = Join-Path $env:LOCALAPPDATA "PineLab\LiveCap\Cache"
+          Write-Host "Checking: $cacheDir"
+          
+          if (Test-Path $cacheDir) {
+              Get-ChildItem -Path $cacheDir -Recurse | Select-Object FullName, Length, LastWriteTime | Format-Table -AutoSize | Out-String | Write-Host
+          } else {
+              Write-Host "Cache directory '$cacheDir' does not exist!"
+          }
+
       - name: Run engine smoke tests (GPU / self-hosted, Linux)
         if: runner.os == 'Linux'
         shell: bash
