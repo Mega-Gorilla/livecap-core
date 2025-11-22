@@ -234,13 +234,13 @@ jobs:
               from collections import namedtuple
               UnameResult = namedtuple("UnameResult", ["sysname", "nodename", "release", "version", "machine"])
               def uname():
-                  import platform
+                  # Avoid platform.* calls that might recurse back to os.uname
                   return UnameResult(
                       sysname="Windows",
-                      nodename=platform.node(),
-                      release=platform.release(),
-                      version=platform.version(),
-                      machine=platform.machine()
+                      nodename=os.environ.get("COMPUTERNAME", "unknown"),
+                      release=os.environ.get("OS", "unknown"),
+                      version="10.0.xxxx",
+                      machine=os.environ.get("PROCESSOR_ARCHITECTURE", "AMD64")
                   )
               os.uname = uname
 
