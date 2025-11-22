@@ -174,7 +174,23 @@ class ParakeetEngine(BaseEngine):
                     )
 
                     logging.info(f"モデルをローカルに保存: {model_path}")
+                    
+                    # 親ディレクトリを確実に作成
+                    model_path.parent.mkdir(parents=True, exist_ok=True)
+                    
                     model.save_to(str(model_path))
+                    
+                    # Windows Workaround: NeMoが親ディレクトリに保存してしまう場合の対策
+                    if not model_path.exists():
+                        # 想定: .../models/parakeet/file.nemo
+                        # 実態: .../models/file.nemo
+                        wrong_path = model_path.parent.parent / model_path.name
+                        if wrong_path.exists():
+                            logging.warning(f"Workaround: Moving model from {wrong_path} to {model_path}")
+                            wrong_path.rename(model_path)
+                        else:
+                            logging.error(f"Model saved, but file not found at {model_path} or {wrong_path}")
+                            
                     del model
         finally:
             nemo_logger.setLevel(original_level)
