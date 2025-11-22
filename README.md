@@ -23,12 +23,11 @@ other projects embed.
 ## Requirements
 
 - Python **3.10 – 3.12** (match `pyproject.toml`).
-- POSIX-like environment (Linux/macOS). Windows support is planned and tracked
-  in the Live_Cap_v3 repository.
+- POSIX-like environment (Linux/macOS). Windows support is actively tested on self-hosted runners.
 - [uv](https://github.com/astral-sh/uv) (recommended) or pip for dependency
   management.
-- `sherpa-onnx>=1.12.15` ships with the base install so the ReazonSpeech engine
-  works out of the box (same floor version as Live_Cap_v3).
+- `sherpa-onnx>=1.12.17` ships with the base install so the ReazonSpeech engine
+  works out of the box.
 
 ## Installation
 
@@ -105,6 +104,15 @@ uv run python -m pytest tests/core/engines
 
 # Integration tests (included in default pytest run)
 uv run python -m pytest tests/integration
+```
+
+### GPU Smoke Tests
+
+To run engine smoke tests that require a GPU (e.g. ReazonSpeech on Windows, Whisper on CUDA):
+
+```bash
+export LIVECAP_ENABLE_GPU_SMOKE=1
+uv run python -m pytest tests/integration/engines -m "engine_smoke and gpu"
 ```
 
 See [`docs/dev-docs/testing/README.md`](docs/dev-docs/testing/README.md) for the

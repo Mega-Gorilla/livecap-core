@@ -11,9 +11,9 @@ LiveCap Core は LiveCap GUI やヘッドレスデプロイで利用されるラ
 ## 必要環境
 
 - Python **3.10 – 3.12**
-- POSIX 系 OS（Linux/macOS）。Windows サポートは Live_Cap_v3 リポジトリで議論中です。
+- POSIX 系 OS（Linux/macOS）。Windows サポートはセルフホストランナーで積極的にテストされています。
 - 依存管理は [uv](https://github.com/astral-sh/uv) 推奨（pip/venv でも可）
-- ReazonSpeech エンジン向けに `sherpa-onnx>=1.12.15` を同梱（Live_Cap_v3 と同じバージョン下限）
+- ReazonSpeech エンジン向けに `sherpa-onnx>=1.12.17` を同梱
 
 ## インストール手順
 
@@ -87,6 +87,15 @@ uv run python -m pytest tests/core/engines
 
 # 統合テスト (デフォルトの pytest に含まれる)
 uv run python -m pytest tests/integration
+```
+
+### GPU スモークテスト
+
+GPU を使用するエンジンスモークテスト（例: Windows での ReazonSpeech、CUDA での Whisper）を実行するには:
+
+```bash
+export LIVECAP_ENABLE_GPU_SMOKE=1
+uv run python -m pytest tests/integration/engines -m "engine_smoke and gpu"
 ```
 
 ## FFmpeg セットアップ
