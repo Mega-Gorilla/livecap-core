@@ -105,7 +105,7 @@ uv run python -m pytest tests/core/engines
 *   **環境**: Self-hosted GPU Runners (Linux/Windows)。
 *   **検証エンジン**:
     *   Linux: Whisper, Parakeet。
-    *   Windows: Whisper, Parakeet, ReazonSpeech (CPU fallback可)。
+    *   Windows: Whisper, ReazonSpeech (CPU fallback可)。※Parakeet は Windows 互換性問題のため一時除外。
 *   **条件**: レポジトリ変数 `LIVECAP_ENABLE_GPU_SMOKE=1` が必要。
 
 ## CI 対応表
@@ -121,7 +121,7 @@ uv run python -m pytest tests/core/engines
 | Workflow | Runner | FFmpeg 準備 |
 | --- | --- | --- |
 | `Core Tests` / `Integration Tests`（transcription-pipeline, engine-smoke-cpu） | GitHub-hosted `ubuntu-latest` | `apt-get install ffmpeg` 後に `./ffmpeg-bin/` へ配置（Integration Tests では OS ごとにキャッシュ） |
-| `Windows Core Tests` | GitHub-hosted `windows-latest` | gyan.dev のポータブル版を composite action で `.fmpeg-bin\` へ展開 |
+| `Windows Core Tests` | GitHub-hosted `windows-latest` | gyan.dev のポータブル版を composite action で `.\ffmpeg-bin\` へ展開 |
 | `Integration Tests` engine-smoke-gpu | Self-hosted Linux/Windows (GPU) | `setup-livecap-ffmpeg` で `./ffmpeg-bin/` に展開（キャッシュ有効）。Python/torch/ドライバはランナー側で事前用意 |
 | `Verify Self-Hosted Linux Runner` | self-hosted Linux | ffbinaries 由来のポータブル FFmpeg を配置 |
 | `Verify Self-Hosted Windows Runner` | self-hosted Windows | gyan.dev 由来のポータブル FFmpeg を配置 |
