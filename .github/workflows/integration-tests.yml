@@ -188,13 +188,13 @@ jobs:
           # Ensure directories exist
           New-Item -ItemType Directory -Force -Path "$cacheRoot\uv" | Out-Null
           New-Item -ItemType Directory -Force -Path "$cacheRoot\models" | Out-Null
-          New-Item -ItemType Directory -Force -Path "$cacheRoot\huggingface" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$cacheRoot\cache" | Out-Null
           New-Item -ItemType Directory -Force -Path "$cacheRoot\ffmpeg-bin" | Out-Null
           
           # Set Environment Variables
           "UV_CACHE_DIR=$cacheRoot\uv" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "LIVECAP_CACHE_DIR=$cacheRoot\models" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "HF_HOME=$cacheRoot\huggingface" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LIVECAP_CORE_MODELS_DIR=$cacheRoot\models" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LIVECAP_CORE_CACHE_DIR=$cacheRoot\cache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LIVECAP_FFMPEG_BIN=$cacheRoot\ffmpeg-bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           
           Write-Host "Configured persistent paths at $cacheRoot"
@@ -208,13 +208,13 @@ jobs:
           # Ensure directories exist
           mkdir -p "$CACHE_ROOT/uv"
           mkdir -p "$CACHE_ROOT/models"
-          mkdir -p "$CACHE_ROOT/huggingface"
+          mkdir -p "$CACHE_ROOT/cache"
           mkdir -p "$CACHE_ROOT/ffmpeg-bin"
           
           # Set Environment Variables
           echo "UV_CACHE_DIR=$CACHE_ROOT/uv" >> $GITHUB_ENV
-          echo "LIVECAP_CACHE_DIR=$CACHE_ROOT/models" >> $GITHUB_ENV
-          echo "HF_HOME=$CACHE_ROOT/huggingface" >> $GITHUB_ENV
+          echo "LIVECAP_CORE_MODELS_DIR=$CACHE_ROOT/models" >> $GITHUB_ENV
+          echo "LIVECAP_CORE_CACHE_DIR=$CACHE_ROOT/cache" >> $GITHUB_ENV
           echo "LIVECAP_FFMPEG_BIN=$CACHE_ROOT/ffmpeg-bin" >> $GITHUB_ENV
           
           echo "Configured persistent paths at $CACHE_ROOT"
