@@ -168,12 +168,17 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          # Remove lockfile to avoid uv run reinstalling packages based on lockfile state
+          rm -f uv.lock
+          
           # Create venv and install dependencies manually to avoid PyPI torch/nvidia-* conflicts
           uv venv
-          # Install PyTorch from official index (bundled cuDNN) - Use cu124 to align with Windows and avoid nvidia-cudnn-cu12 conflict
+          # Install PyTorch from official index (bundled cuDNN) - Use cu124 to align with Windows
           uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
-          # Install project dependencies - do NOT use --extra-index-url to avoid PyPI overwrite
+          # Install project dependencies
           uv pip install -e .[translation,dev,engines-torch,engines-nemo]
+          # Remove conflicting cuDNN package (PyTorch bundles its own)
+          uv run pip uninstall -y nvidia-cudnn-cu12 || true
 
       - name: Debug Linux GPU Environment
         if: runner.os == 'Linux'
@@ -188,7 +193,8 @@ jobs:
           uv pip list | grep -E "torch|nvidia|nemo"
           
           echo "--- PyTorch & cuDNN Check ---"
-          uv run python -c "import torch; print(f'Torch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda}'); print(f'cuDNN available: {torch.backends.cudnn.is_available()}'); print(f'cuDNN version: {torch.backends.cudnn.version() if torch.backends.cudnn.is_available() else None}');"
+          # Use python directly to avoid uv run lockfile sync
+          .venv/bin/python -c "import torch; print(f'Torch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda}'); print(f'cuDNN available: {torch.backends.cudnn.is_available()}'); print(f'cuDNN version: {torch.backends.cudnn.version() if torch.backends.cudnn.is_available() else None}');"
 
       - name: Sync dependencies (Windows)
         if: runner.os == 'Windows'
@@ -216,7 +222,8 @@ jobs:
         env:
           LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
         run: |
-          uv run python - <<'PY'
+          # Use python directly to avoid uv run lockfile sync
+          .venv/bin/python - <<'PY'
           from engines.engine_factory import EngineFactory
           from livecap_core.config.defaults import get_default_config
 
@@ -299,7 +306,8 @@ jobs:
           LIVECAP_REQUIRE_ENGINE_SMOKE: ${{ vars.LIVECAP_REQUIRE_ENGINE_SMOKE }}
         run: |
           # Skip ReazonSpeech on Linux GPU
-          uv run python -m pytest tests/integration/engines -m "engine_smoke and gpu" -k "not reazonspeech" -v
+          # Use python directly to avoid uv run lockfile sync
+          .venv/bin/python -m pytest tests/integration/engines -m "engine_smoke and gpu" -k "not reazonspeech" -v
 
       - name: Run engine smoke tests (GPU / self-hosted, Windows)
         if: runner.os == 'Windows'
