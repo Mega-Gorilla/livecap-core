@@ -11,8 +11,6 @@ jobs:
       fail-fast: false
       matrix:
         # Include both hosted and self-hosted runners
-        # Windows self-hosted is optional/experimental for now, so we can comment it out or keep it if ready.
-        # Based on requirements, we enable self-hosted.
         os: [ubuntu-latest, [self-hosted, linux], [self-hosted, windows]]
         
     runs-on: ${{ matrix.os }}
@@ -30,7 +28,9 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v3
 
+      # Standard cache for hosted runners (Self-hosted optimization applied in engine-smoke-gpu)
       - name: Cache ffmpeg-bin
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/cache@v4
         with:
           path: ffmpeg-bin
@@ -48,7 +48,6 @@ jobs:
 
       - name: Run integration tests
         env:
-          # Python handles forward slashes on all platforms
           LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
         run: |
           uv run python -m pytest tests/integration -m "not engine_smoke"
@@ -105,7 +104,6 @@ jobs:
               models_dir = engine.model_manager.get_models_dir(engine.engine_name)
               print(f"[{engine_type}/{device}] cached at: {models_dir}")
 
-          # ReazonSpeech removed from CPU smoke due to ABI issues on hosted runners
           warm("whispers2t_base", "cpu", "en")
           PY
 
@@ -133,6 +131,30 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Configure Persistent Paths
+        shell: bash
+        run: |
+          # Define base cache directory based on OS
+          if [ "$RUNNER_OS" == "Windows" ]; then
+             CACHE_ROOT="C:/LiveCap/Cache"
+          else
+             CACHE_ROOT="$HOME/LiveCap/Cache"
+          fi
+          
+          # Ensure directories exist
+          mkdir -p "$CACHE_ROOT/uv"
+          mkdir -p "$CACHE_ROOT/models"
+          mkdir -p "$CACHE_ROOT/huggingface"
+          mkdir -p "$CACHE_ROOT/ffmpeg-bin"
+          
+          # Set Environment Variables for subsequent steps
+          echo "UV_CACHE_DIR=$CACHE_ROOT/uv" >> $GITHUB_ENV
+          echo "LIVECAP_CACHE_DIR=$CACHE_ROOT/models" >> $GITHUB_ENV
+          echo "HF_HOME=$CACHE_ROOT/huggingface" >> $GITHUB_ENV
+          echo "LIVECAP_FFMPEG_BIN=$CACHE_ROOT/ffmpeg-bin" >> $GITHUB_ENV
+          
+          echo "Configured persistent paths at $CACHE_ROOT"
+
       - name: Set up Python (Linux)
         if: runner.os == 'Linux'
         uses: actions/setup-python@v5
@@ -151,18 +173,25 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v3
 
-      - name: Cache ffmpeg-bin
-        uses: actions/cache@v4
-        with:
-          path: ffmpeg-bin
-          key: ffmpeg-bin-${{ runner.os }}-${{ hashFiles('.github/actions/setup-livecap-ffmpeg/action.yml') }}
-          restore-keys: |
-            ffmpeg-bin-${{ runner.os }}-
+      # Removed actions/cache for ffmpeg-bin as we use persistent LIVECAP_FFMPEG_BIN
+
+      - name: Check FFmpeg existence
+        id: check-ffmpeg
+        shell: bash
+        run: |
+          if [ -f "$LIVECAP_FFMPEG_BIN/ffmpeg" ] || [ -f "$LIVECAP_FFMPEG_BIN/ffmpeg.exe" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "FFmpeg found at $LIVECAP_FFMPEG_BIN"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "FFmpeg not found, triggering setup"
+          fi
 
       - name: Setup LiveCap FFmpeg
+        if: steps.check-ffmpeg.outputs.exists != 'true'
         uses: ./.github/actions/setup-livecap-ffmpeg
         with:
-          ffmpeg-bin-dir: 'ffmpeg-bin'
+          ffmpeg-bin-dir: ${{ env.LIVECAP_FFMPEG_BIN }}
 
       - name: Sync dependencies (Linux)
         if: runner.os == 'Linux'
@@ -171,20 +200,21 @@ jobs:
           # Bypass lockfile sync
           rm -f uv.lock
           
-          # Create venv and install dependencies manually to avoid PyPI torch/nvidia-* conflicts
+          # Create venv and install dependencies manually
           uv venv
-          # Install PyTorch from official index (bundled cuDNN) - Use cu124 to align with Windows
+          # Install PyTorch from official index (cu124)
           uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
           # Install project dependencies
           uv pip install -e .[translation,dev,engines-torch,engines-nemo]
-          # Remove conflicting cuDNN package (PyTorch bundles its own)
+          # Remove conflicting cuDNN package
           uv pip uninstall nvidia-cudnn-cu12
 
       - name: Sync dependencies (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Clean slate to avoid conflicts
+          # Reuse .venv if exists? No, for now keep clean slate but use cache
+          # To optimize further, we could remove this Remove-Item line
           Remove-Item -Recurse -Force .venv -ErrorAction SilentlyContinue
           
           # Create venv explicitly
@@ -203,8 +233,7 @@ jobs:
       - name: Warm engine caches (GPU / self-hosted, Linux)
         if: runner.os == 'Linux'
         shell: bash
-        env:
-          LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
+        # LIVECAP_FFMPEG_BIN is already set globally by Configure Persistent Paths
         run: |
           # Bypass lockfile sync
           .venv/bin/python - <<'PY'
@@ -233,8 +262,7 @@ jobs:
       - name: Warm engine caches (GPU / self-hosted, Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        env:
-          LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
+        # LIVECAP_FFMPEG_BIN is already set globally by Configure Persistent Paths
         run: |
           $script = @"
           import os
@@ -285,7 +313,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         env:
-          LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
+          # LIVECAP_FFMPEG_BIN set globally
           LIVECAP_ENABLE_GPU_SMOKE: ${{ vars.LIVECAP_ENABLE_GPU_SMOKE }}
           LIVECAP_REQUIRE_ENGINE_SMOKE: ${{ vars.LIVECAP_REQUIRE_ENGINE_SMOKE }}
         run: |
@@ -297,7 +325,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         env:
-          LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
+          # LIVECAP_FFMPEG_BIN set globally
           LIVECAP_ENABLE_GPU_SMOKE: ${{ vars.LIVECAP_ENABLE_GPU_SMOKE }}
           LIVECAP_REQUIRE_ENGINE_SMOKE: ${{ vars.LIVECAP_REQUIRE_ENGINE_SMOKE }}
         run: |
