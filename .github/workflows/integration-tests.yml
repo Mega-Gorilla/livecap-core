@@ -168,7 +168,17 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          uv sync --extra translation --extra dev --extra engines-torch --extra engines-nemo
+          # Bypass lockfile sync
+          rm -f uv.lock
+          
+          # Create venv and install dependencies manually to avoid PyPI torch/nvidia-* conflicts
+          uv venv
+          # Install PyTorch from official index (bundled cuDNN) - Use cu124 to align with Windows
+          uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+          # Install project dependencies
+          uv pip install -e .[translation,dev,engines-torch,engines-nemo]
+          # Remove conflicting cuDNN package (PyTorch bundles its own)
+          uv pip uninstall nvidia-cudnn-cu12
 
       - name: Sync dependencies (Windows)
         if: runner.os == 'Windows'
@@ -196,7 +206,8 @@ jobs:
         env:
           LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
         run: |
-          uv run python - <<'PY'
+          # Bypass lockfile sync
+          .venv/bin/python - <<'PY'
           from engines.engine_factory import EngineFactory
           from livecap_core.config.defaults import get_default_config
 
@@ -279,7 +290,8 @@ jobs:
           LIVECAP_REQUIRE_ENGINE_SMOKE: ${{ vars.LIVECAP_REQUIRE_ENGINE_SMOKE }}
         run: |
           # Skip ReazonSpeech on Linux GPU
-          uv run python -m pytest tests/integration/engines -m "engine_smoke and gpu" -k "not reazonspeech" -v
+          # Bypass lockfile sync
+          .venv/bin/python -m pytest tests/integration/engines -m "engine_smoke and gpu" -k "not reazonspeech" -v
 
       - name: Run engine smoke tests (GPU / self-hosted, Windows)
         if: runner.os == 'Windows'
