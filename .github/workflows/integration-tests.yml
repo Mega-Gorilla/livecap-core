@@ -170,6 +170,21 @@ jobs:
         run: |
           uv sync --extra translation --extra dev --extra engines-torch --extra engines-nemo
 
+      - name: Debug Linux GPU Environment
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          echo "--- System Info ---"
+          nvidia-smi || echo "nvidia-smi not found"
+          echo "--- Environment Variables ---"
+          env | grep -E "LD_|CUDA|TORCH" || true
+          
+          echo "--- Python Packages ---"
+          uv pip list | grep -E "torch|nvidia|nemo"
+          
+          echo "--- PyTorch & cuDNN Check ---"
+          uv run python -c "import torch; print(f'Torch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda}'); print(f'cuDNN available: {torch.backends.cudnn.is_available()}'); print(f'cuDNN version: {torch.backends.cudnn.version() if torch.backends.cudnn.is_available() else None}');"
+
       - name: Sync dependencies (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
