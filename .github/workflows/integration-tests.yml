@@ -172,8 +172,8 @@ jobs:
           uv venv
           # Install PyTorch from official index (bundled cuDNN)
           uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
-          # Install project dependencies
-          uv pip install -e .[translation,dev,engines-torch,engines-nemo]
+          # Install project dependencies, ensuring PyTorch index is still respected
+          uv pip install -e .[translation,dev,engines-torch,engines-nemo] --extra-index-url https://download.pytorch.org/whl/cu124
 
       - name: Debug Linux GPU Environment
         if: runner.os == 'Linux'
