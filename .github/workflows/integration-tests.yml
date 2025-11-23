@@ -170,7 +170,7 @@ jobs:
         run: |
           uv sync --extra translation --extra dev --extra engines-torch --extra engines-nemo
           # Remove conflicting cuDNN package (PyTorch bundles its own)
-          uv pip uninstall nvidia-cudnn-cu12 -y || true
+          uv run pip uninstall -y nvidia-cudnn-cu12 || true
 
       - name: Debug Linux GPU Environment
         if: runner.os == 'Linux'
