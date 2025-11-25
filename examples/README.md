@@ -99,6 +99,22 @@ LIVECAP_DEVICE=cpu python examples/realtime/basic_file_transcription.py
 LIVECAP_ENGINE=whispers2t_tiny python examples/realtime/basic_file_transcription.py
 ```
 
+### Q: cuDNN version mismatch warning
+
+```
+WARNING: cuDNN error, retrying with CPU: cuDNN failed with status CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH
+```
+
+この警告は cuDNN バージョンの不一致を示しています。エンジンは自動的に CPU にフォールバックして処理を継続します。警告を回避するには：
+
+```bash
+# 最初から CPU を使用
+LIVECAP_DEVICE=cpu python examples/realtime/async_microphone.py
+
+# または cuDNN を PyTorch 対応バージョンに更新
+# https://pytorch.org/get-started/locally/ を参照
+```
+
 ## 関連ドキュメント
 
 - [リアルタイム文字起こしガイド](../docs/guides/realtime-transcription.md)

@@ -124,24 +124,29 @@ async def run_transcription(device_id: int | None) -> None:
     print("=== Listening... (Press Ctrl+C to stop) ===")
     print()
 
-    # キャンセルフラグ
-    cancelled = False
+    # マイクソースへの参照（シグナルハンドラから停止するため）
+    mic_ref: list[MicrophoneSource | None] = [None]
 
     def signal_handler(sig, frame):
-        nonlocal cancelled
-        cancelled = True
         print("\n\nStopping...")
+        # マイクを停止して非同期イテレータを終了させる
+        if mic_ref[0] is not None:
+            mic_ref[0].stop()
 
     signal.signal(signal.SIGINT, signal_handler)
 
     try:
         transcriber = StreamTranscriber(engine=engine, source_id="microphone")
 
-        async with MicrophoneSource(device_id=device_id) as mic:
+        mic = MicrophoneSource(device=device_id)
+        mic_ref[0] = mic
+        mic.start()
+
+        try:
             async for result in transcriber.transcribe_async(mic):
-                if cancelled:
-                    break
                 print(f"[{result.start_time:6.2f}s] {result.text}")
+        finally:
+            mic.stop()
 
         transcriber.close()
 
