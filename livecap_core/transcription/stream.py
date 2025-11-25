@@ -149,7 +149,11 @@ class StreamTranscriber:
 
     def feed_audio(self, audio: np.ndarray, sample_rate: int = 16000) -> None:
         """
-        音声チャンクを入力（ノンブロッキング）
+        音声チャンクを入力
+
+        VAD でセグメントが検出された場合、文字起こしを実行するため
+        ブロッキングが発生する。非同期処理が必要な場合は
+        transcribe_async() を使用すること。
 
         結果は get_result() / get_interim() で取得するか、
         コールバックで受け取る。
@@ -157,6 +161,10 @@ class StreamTranscriber:
         Args:
             audio: 音声データ（float32）
             sample_rate: サンプリングレート
+
+        Note:
+            セグメント検出時は engine.transcribe() が呼ばれるため
+            処理時間はエンジンに依存する（数十ms〜数百ms）。
         """
         # VAD処理
         segments = self._vad.process_chunk(audio, sample_rate)
@@ -292,7 +300,7 @@ class StreamTranscriber:
         if len(segment.audio) == 0:
             return None
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             text, confidence = await loop.run_in_executor(
                 self._executor,
@@ -346,6 +354,13 @@ class StreamTranscriber:
     def close(self) -> None:
         """リソースを解放"""
         self._executor.shutdown(wait=False)
+
+    def __del__(self) -> None:
+        """デストラクタ: リソースを確実に解放"""
+        try:
+            self._executor.shutdown(wait=False)
+        except Exception:
+            pass  # GC 時のエラーは無視
 
     def __enter__(self) -> "StreamTranscriber":
         return self
