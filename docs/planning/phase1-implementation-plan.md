@@ -1263,7 +1263,21 @@ with MicrophoneSource() as mic:
 
 ## 6. テスト計画
 
-### 6.1 ユニットテスト
+### 6.1 テストデータ
+
+既存の `tests/assets/audio/` を使用。追加データは不要。
+
+| ファイル | 言語 | サンプルレート | 長さ | 正解テキスト |
+|---------|------|--------------|------|-------------|
+| `jsut_basic5000_0001_ja.wav` | 日本語 | 16kHz | 3.19s | 水をマレーシアから買わなくてはならないのです。 |
+| `librispeech_..._en.wav` | 英語 | 16kHz | 3.27s | STUFF IT INTO YOU HIS BELLY COUNSELLED HIM |
+
+**利点:**
+- 16kHz で VAD/エンジン要求レートと一致（リサンプリング不要）
+- 正解テキスト（`.txt`）付きで精度検証可能
+- 約3秒で VAD 状態遷移テストに適切
+
+### 6.2 ユニットテスト
 
 | テスト対象 | テストケース |
 |-----------|-------------|
@@ -1273,13 +1287,26 @@ with MicrophoneSource() as mic:
 | `VADProcessor` | process_chunk、finalize |
 | `FileSource` | start/stop、read、イテレータ |
 
-### 6.2 統合テスト
+### 6.3 統合テスト
 
 | テストケース | 説明 |
 |-------------|------|
 | FileSource + VADProcessor | ファイルからVADセグメント検出 |
 | FileSource + StreamTranscriber | ファイル文字起こしe2e |
 | MicrophoneSource（手動） | 実マイクでの動作確認 |
+
+```python
+# 統合テスト例
+def test_stream_transcriber_japanese():
+    """日本語音声のストリーム文字起こし"""
+    source = FileSource("tests/assets/audio/jsut_basic5000_0001_ja.wav", realtime=False)
+    transcriber = StreamTranscriber(engine)
+
+    results = list(transcriber.transcribe_sync(source))
+
+    assert len(results) >= 1
+    assert "マレーシア" in results[0].text  # 部分一致で検証
+```
 
 ---
 
@@ -1314,3 +1341,4 @@ with MicrophoneSource() as mic:
 |------|----------|
 | 2025-11-25 | 初版作成 |
 | 2025-11-25 | Silero VAD v5/v6 パラメータに更新（512 samples/32ms フレーム、speech_pad_ms 統一）|
+| 2025-11-25 | テスト計画にテストデータ情報を追加 |
