@@ -102,7 +102,11 @@ def _try_create_vad_processor() -> VADProcessor | None:
         return None
 
 
-def _try_create_engine(engine_type: str = "whispers2t_base", device: str = "cpu"):
+def _try_create_engine(
+    engine_type: str = "whispers2t_base",
+    device: str = "cpu",
+    language: str = "en",
+):
     """Try to create an ASR engine, return None if unavailable."""
     try:
         from engines.engine_factory import EngineFactory
@@ -110,6 +114,7 @@ def _try_create_engine(engine_type: str = "whispers2t_base", device: str = "cpu"
 
         config = get_default_config()
         config["transcription"]["engine"] = engine_type
+        config["transcription"]["input_language"] = language
 
         engine = EngineFactory.create_engine(
             engine_type=engine_type,
@@ -187,7 +192,7 @@ class TestSileroVADDirect:
             _skip_or_fail("SileroVAD could not be initialized")
 
         # Load audio file
-        with FileSource(str(audio_file_en), chunk_duration_ms=32) as source:
+        with FileSource(str(audio_file_en), chunk_ms=32) as source:
             probabilities = []
             for chunk in source:
                 if len(chunk) >= 512:
@@ -290,8 +295,8 @@ class TestStreamTranscriberE2E:
         if processor is None:
             _skip_or_fail("VADProcessor with SileroVAD could not be created")
 
-        # Try to create engine
-        engine = _try_create_engine("whispers2t_base", "cpu")
+        # Try to create engine with English language
+        engine = _try_create_engine("whispers2t_base", "cpu", language="en")
         if engine is None:
             _skip_or_fail("WhisperS2T engine could not be initialized")
 
@@ -335,8 +340,8 @@ class TestStreamTranscriberE2E:
         if processor is None:
             _skip_or_fail("VADProcessor with SileroVAD could not be created")
 
-        # Try to create engine (WhisperS2T supports Japanese)
-        engine = _try_create_engine("whispers2t_base", "cpu")
+        # Try to create engine with Japanese language
+        engine = _try_create_engine("whispers2t_base", "cpu", language="ja")
         if engine is None:
             _skip_or_fail("WhisperS2T engine could not be initialized")
 
@@ -374,7 +379,7 @@ class TestStreamTranscriberE2E:
         if processor is None:
             _skip_or_fail("VADProcessor with SileroVAD could not be created")
 
-        engine = _try_create_engine("whispers2t_base", "cpu")
+        engine = _try_create_engine("whispers2t_base", "cpu", language="en")
         if engine is None:
             _skip_or_fail("WhisperS2T engine could not be initialized")
 
@@ -421,7 +426,7 @@ class TestStreamTranscriberAsyncE2E:
         if processor is None:
             _skip_or_fail("VADProcessor with SileroVAD could not be created")
 
-        engine = _try_create_engine("whispers2t_base", "cpu")
+        engine = _try_create_engine("whispers2t_base", "cpu", language="en")
         if engine is None:
             _skip_or_fail("WhisperS2T engine could not be initialized")
 
