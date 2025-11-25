@@ -1,16 +1,12 @@
 """Unit tests for MicrophoneSource.
 
 These tests use mocks since actual hardware is not available in CI.
-Skipped if sounddevice/PortAudio is not available.
+Skipped via conftest.py if sounddevice/PortAudio is not available.
 """
 
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
-
-# Skip entire module if sounddevice is not available (requires PortAudio)
-pytest.importorskip("sounddevice", reason="sounddevice requires PortAudio")
 
 from livecap_core.audio_sources import MicrophoneSource
 
