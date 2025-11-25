@@ -13,8 +13,10 @@ from .file_pipeline import (
     SegmentTranscriber,
     Segmenter,
 )
+from .result import TranscriptionResult, InterimResult
 
 __all__ = [
+    # File transcription (existing)
     "FileTranscriptionPipeline",
     "FileTranscriptionProgress",
     "FileProcessingResult",
@@ -26,4 +28,7 @@ __all__ = [
     "ErrorCallback",
     "SegmentTranscriber",
     "Segmenter",
+    # Realtime transcription result types (Phase 1)
+    "TranscriptionResult",
+    "InterimResult",
 ]
