@@ -46,7 +46,9 @@ livecap_core/
 │   ├── config.py                  # VADConfig
 │   ├── processor.py               # VADProcessor
 │   ├── state_machine.py           # VADStateMachine
-│   └── buffer.py                  # AudioBuffer
+│   └── backends/                  # VADバックエンド
+│       ├── __init__.py            # VADBackend Protocol
+│       └── silero.py              # SileroVAD（デフォルト）
 ├── audio_sources/                 # [新規モジュール]
 │   ├── __init__.py
 │   ├── base.py                    # AudioSource ABC
@@ -143,7 +145,7 @@ class VADConfig:
     """
     VAD設定（すべてミリ秒単位で統一）
 
-    TenVADのデフォルト値を基準に設定。
+    Silero VAD のデフォルト値を基準に設定。
     """
     # 音声検出閾値
     threshold: float = 0.5
@@ -237,9 +239,10 @@ class VADStateMachine:
     livecap-guiの実装を簡素化。
     """
 
-    # TenVADのフレーム設定（固定）
-    FRAME_MS: int = 16
-    FRAME_SAMPLES: int = 256  # 16ms @ 16kHz
+    # Silero VAD のフレーム設定
+    # Silero は 512 samples (32ms @ 16kHz) を推奨
+    FRAME_MS: int = 32
+    FRAME_SAMPLES: int = 512  # 32ms @ 16kHz
 
     def __init__(self, config: VADConfig):
         self.config = config
@@ -498,19 +501,19 @@ class VADProcessor:
         self._state_machine = VADStateMachine(self.config)
         self._current_time = 0.0
 
-        # TenVAD初期化（バックエンドが指定されていない場合）
+        # Silero VAD 初期化（バックエンドが指定されていない場合）
         if self._backend is None:
             self._backend = self._create_default_backend()
 
     def _create_default_backend(self) -> VADBackend:
-        """デフォルトのTenVADバックエンドを作成"""
+        """デフォルトの Silero VAD バックエンドを作成"""
         try:
-            from ten_vad import TenVad
-            return TenVad(hop_size=self.FRAME_SAMPLES, threshold=self.config.threshold)
+            from .backends.silero import SileroVAD
+            return SileroVAD(threshold=self.config.threshold)
         except ImportError:
             raise RuntimeError(
-                "TenVAD is required. Install with: "
-                "pip install git+https://github.com/TEN-framework/ten-vad.git"
+                "Silero VAD is required. Install with: "
+                "pip install silero-vad"
             )
 
     def process_chunk(
@@ -538,11 +541,8 @@ class VADProcessor:
         for i in range(0, len(audio) - self.FRAME_SAMPLES + 1, self.FRAME_SAMPLES):
             frame = audio[i:i + self.FRAME_SAMPLES]
 
-            # int16に変換（TenVAD用）
-            frame_int16 = (frame * 32767).astype(np.int16)
-
-            # VAD処理
-            probability, _ = self._backend.process(frame_int16)
+            # VAD処理（Silero VAD は float32 を直接受け付ける）
+            probability = self._backend.process(frame)
 
             # ステートマシン更新
             self._current_time += self.FRAME_SAMPLES / self.SAMPLE_RATE
@@ -1275,7 +1275,7 @@ with MicrophoneSource() as mic:
 | 1 | `TranscriptionResult`, `InterimResult` | なし |
 | 2 | `VADConfig` | なし |
 | 3 | `VADStateMachine` | VADConfig |
-| 4 | `VADProcessor` | VADStateMachine, TenVAD |
+| 4 | `VADProcessor` | VADStateMachine, Silero VAD |
 | 5 | `AudioSource`, `FileSource` | なし |
 | 6 | `MicrophoneSource` | AudioSource, sounddevice |
 | 7 | `StreamTranscriber` | VADProcessor, エンジン |
