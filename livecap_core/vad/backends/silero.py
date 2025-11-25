@@ -55,7 +55,7 @@ class SileroVAD:
         except ImportError as e:
             raise ImportError(
                 "torch is required for Silero VAD. "
-                "Install with: pip install torch"
+                "Install with: pip install livecap-core[vad]"
             ) from e
 
         try:
@@ -65,7 +65,7 @@ class SileroVAD:
             logger.info(f"Silero VAD loaded (onnx={self._onnx})")
         except ImportError as e:
             raise ImportError(
-                "silero-vad is required. Install with: pip install silero-vad"
+                "silero-vad is required. Install with: pip install livecap-core[vad]"
             ) from e
 
     def process(self, audio: np.ndarray) -> float:

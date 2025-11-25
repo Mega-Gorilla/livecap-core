@@ -72,9 +72,15 @@ class VADProcessor:
 
     def _create_default_backend(self) -> VADBackend:
         """デフォルトの Silero VAD バックエンドを作成"""
-        from .backends.silero import SileroVAD
+        try:
+            from .backends.silero import SileroVAD
 
-        return SileroVAD(threshold=self.config.threshold, onnx=True)
+            return SileroVAD(threshold=self.config.threshold, onnx=True)
+        except ImportError as e:
+            raise ImportError(
+                "Silero VAD is required for default VAD backend. "
+                "Install with: pip install livecap-core[vad]"
+            ) from e
 
     def process_chunk(
         self,
