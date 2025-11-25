@@ -172,8 +172,9 @@ class VADConfig:
 
     # 発話前後のパディング（Silero: speech_pad_ms）
     # Silero はデフォルト 30ms だが、livecap-cli では発話区間を
-    # より確実に捕捉するため、やや長めの値を使用
-    speech_pad_ms: int = 30
+    # より確実に捕捉するため、長めの値を使用（livecap-gui は 300ms）
+    # 注: 32ms フレームで最低3フレーム（96ms）を確保
+    speech_pad_ms: int = 100
 
     # 最大発話時間（0 = 無制限）（Silero: max_speech_duration_s）
     max_speech_ms: int = 0
@@ -190,7 +191,7 @@ class VADConfig:
             neg_threshold=config.get('neg_threshold'),
             min_speech_ms=config.get('min_speech_ms', 250),
             min_silence_ms=config.get('min_silence_ms', 100),
-            speech_pad_ms=config.get('speech_pad_ms', 30),
+            speech_pad_ms=config.get('speech_pad_ms', 100),
             max_speech_ms=config.get('max_speech_ms', 0),
             interim_min_duration_ms=config.get('interim_min_duration_ms', 2000),
             interim_interval_ms=config.get('interim_interval_ms', 1000),
@@ -272,7 +273,8 @@ class VADStateMachine:
         self._min_speech_frames = config.min_speech_ms // self.FRAME_MS
         self._min_silence_frames = config.min_silence_ms // self.FRAME_MS
         # Silero VAD は speech_pad_ms を前後両方のパディングに使用
-        self._padding_frames = config.speech_pad_ms // self.FRAME_MS
+        # 最低1フレームを保証（100ms // 32ms = 3フレーム）
+        self._padding_frames = max(1, config.speech_pad_ms // self.FRAME_MS)
 
         # バッファ
         self._pre_buffer: list[np.ndarray] = []
@@ -524,11 +526,10 @@ class VADProcessor:
         """デフォルトの Silero VAD バックエンドを作成"""
         try:
             from .backends.silero import SileroVAD
-            return SileroVAD(threshold=self.config.threshold)
+            return SileroVAD(threshold=self.config.threshold, onnx=True)
         except ImportError:
-            raise RuntimeError(
-                "Silero VAD is required. Install with: "
-                "pip install silero-vad"
+            raise ImportError(
+                "silero-vad is required. Install with: pip install silero-vad"
             )
 
     def process_chunk(
@@ -605,7 +606,110 @@ class VADProcessor:
 
 ---
 
-### 3.5 AudioSource（音声ソース）
+### 3.5 SileroVAD バックエンド
+
+**ファイル:** `livecap_core/vad/backends/silero.py`
+
+```python
+"""Silero VAD バックエンド"""
+
+from __future__ import annotations
+from typing import Any
+import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class SileroVAD:
+    """
+    Silero VAD v5/v6 バックエンド
+
+    VADBackend Protocol を実装。
+    512 samples (32ms @ 16kHz) のチャンクを処理して確率を返す。
+    """
+
+    def __init__(self, threshold: float = 0.5, onnx: bool = True):
+        """
+        Args:
+            threshold: 音声判定閾値（VADProcessor で使用、ここでは参考値）
+            onnx: ONNX ランタイムを使用するか（推奨: True）
+        """
+        try:
+            from silero_vad import load_silero_vad
+            self.model = load_silero_vad(onnx=onnx)
+            self._onnx = onnx
+            logger.info(f"Silero VAD loaded (onnx={onnx})")
+        except ImportError:
+            raise ImportError(
+                "silero-vad is required. Install with: pip install silero-vad"
+            )
+
+    def process(self, audio: np.ndarray) -> float:
+        """
+        音声を処理してVAD確率を返す
+
+        Args:
+            audio: float32形式の音声データ（512 samples @ 16kHz）
+
+        Returns:
+            probability (0.0-1.0)
+        """
+        import torch
+
+        # numpy → torch tensor
+        if not isinstance(audio, torch.Tensor):
+            audio = torch.from_numpy(audio.astype(np.float32))
+
+        # Silero VAD は (512,) の 1D tensor を期待
+        if audio.dim() > 1:
+            audio = audio.squeeze()
+
+        return self.model(audio, 16000).item()
+
+    def reset(self) -> None:
+        """内部状態をリセット（新しい音声ストリーム開始時に呼ぶ）"""
+        self.model.reset_states()
+```
+
+**ファイル:** `livecap_core/vad/backends/__init__.py`
+
+```python
+"""VAD バックエンド"""
+
+from typing import Protocol
+import numpy as np
+
+
+class VADBackend(Protocol):
+    """VADバックエンドのプロトコル"""
+
+    def process(self, audio: np.ndarray) -> float:
+        """
+        音声を処理してVAD確率を返す
+
+        Args:
+            audio: float32形式の音声データ（512 samples @ 16kHz）
+
+        Returns:
+            probability (0.0-1.0)
+        """
+        ...
+
+    def reset(self) -> None:
+        """内部状態をリセット"""
+        ...
+
+
+# デフォルトエクスポート
+from .silero import SileroVAD
+
+__all__ = ["VADBackend", "SileroVAD"]
+```
+
+---
+
+### 3.6 AudioSource（音声ソース）
 
 **ファイル:** `livecap_core/audio_sources/base.py`
 
@@ -919,7 +1023,7 @@ class FileSource(AudioSource):
 
 ---
 
-### 3.6 StreamTranscriber（ストリーミング文字起こし）
+### 3.7 StreamTranscriber（ストリーミング文字起こし）
 
 **ファイル:** `livecap_core/transcription/stream.py`
 
@@ -1342,3 +1446,4 @@ def test_stream_transcriber_japanese():
 | 2025-11-25 | 初版作成 |
 | 2025-11-25 | Silero VAD v5/v6 パラメータに更新（512 samples/32ms フレーム、speech_pad_ms 統一）|
 | 2025-11-25 | テスト計画にテストデータ情報を追加 |
+| 2025-11-25 | speech_pad_ms を 30→100ms に変更、SileroVAD バックエンド実装を追記 |
