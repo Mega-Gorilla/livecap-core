@@ -10,10 +10,11 @@
 | `tests/core/config` | 設定ビルダーとデフォルト |
 | `tests/core/engines` | EngineFactory 配線とアダプター登録 |
 | `tests/core/i18n` | 翻訳テーブルとロケールフォールバック |
-| `tests/core/resources` | FFmpeg・モデルキャッシュ・uv プロファイル管理 |
-| `tests/transcription` | 変換ヘルパーのユニットテスト（Live_Cap_v3 互換のため残置） |
+| `tests/core/resources` | FFmpeg・モデルキャッシュ・リソース管理 |
+| `tests/transcription` | 変換ヘルパーのユニットテスト（LiveCap-GUI 互換のため残置） |
 | `tests/integration/transcription` | 音声・ディスク・モデル DL を含むエンドツーエンド |
 | `tests/integration/engines` | 実音源を使ったエンジンスモーク（CPU/GPU 切替可） |
+| `tests/utils` | テスト用ユーティリティ（テキスト正規化など） |
 
 実体のあるバイナリやモデルを使うシナリオは `tests/integration/` に置きます。これらも `pytest tests` で走るため、極力決定的に保ち、フラグで明示的に制御します。
 
@@ -21,9 +22,9 @@
 
 | Extra | 説明 |
 | --- | --- |
-| `translation` | 言語パックとテキスト処理依存 |
-| `dev` | pytest・型・lint 用ツール |
-| `engines-torch` | Whisper / ReazonSpeech など Torch 系エンジン |
+| `translation` | 翻訳機能依存（deep-translator） |
+| `dev` | テストフレームワーク（pytest） |
+| `engines-torch` | Whisper / ReazonSpeech など PyTorch 系エンジン |
 | `engines-nemo` | Parakeet / Canary など NVIDIA NeMo 系 |
 
 日常開発は `translation` + `dev` が基本。特定エンジンを動かすときに対応する extra を追加します。
@@ -46,10 +47,10 @@ uv run python -m pytest tests
 
 | 変更内容 | 手元での推奨コマンド | 推奨 CI ワークフロー / ジョブ | 備考 |
 | --- | --- | --- | --- |
-| CLI / 設定のみ | `uv run python -m pytest tests/core/cli tests/core/config` | `Core Tests`（Linux/Windows） | FFmpeg 依存なし |
+| CLI / 設定のみ | `uv run python -m pytest tests/core/cli tests/core/config` | `Core Tests`（Linux） / `Windows Core Tests` | FFmpeg 依存なし |
 | パイプライン・リソース（FFmpeg 等） | `uv run python -m pytest tests/integration -m "not engine_smoke"` | `Integration Tests` の `transcription-pipeline` ジョブ | 実 FFmpeg が必要（下記参照） |
-| エンジン（CPU） | `uv sync --extra translation --extra dev --extra engines-torch`<br>`uv run python -m pytest tests/integration/engines -m "engine_smoke and not gpu"` | `Integration Tests` の `engine-smoke-cpu` ジョブ | Whisper (small/base) の実音源スモーク |
-| エンジン（GPU） | `LIVECAP_ENABLE_GPU_SMOKE=1 uv sync --extra translation --extra dev --extra engines-torch --extra engines-nemo`<br>`uv run python -m pytest tests/integration/engines -m "engine_smoke and gpu"` | `Integration Tests` の `engine-smoke-gpu` ジョブ（self-hosted Linux/Windows） | Whisper / Parakeet / ReazonSpeech（Windowsのみ） の実音源スモーク |
+| エンジン（CPU） | `uv sync --extra translation --extra dev --extra engines-torch`<br>`uv run python -m pytest tests/integration/engines -m "engine_smoke and not gpu"` | `Integration Tests` の `engine-smoke-cpu` ジョブ | Whisper base の実音源スモーク |
+| エンジン（GPU） | `LIVECAP_ENABLE_GPU_SMOKE=1 uv sync --extra translation --extra dev --extra engines-torch --extra engines-nemo`<br>`uv run python -m pytest tests/integration/engines -m "engine_smoke and gpu"` | `Integration Tests` の `engine-smoke-gpu` ジョブ（self-hosted Linux/Windows） | Whisper / Parakeet / ReazonSpeech の実音源スモーク |
 | 自社ランナーの環境確認 | ― | `Verify Self-Hosted Linux Runner` / `Verify Self-Hosted Windows Runner` | FFmpeg / Python / uv の前提チェック |
 
 `Integration Tests` は `workflow_dispatch` で手動起動できます。GPU スモークを含める場合は、事前にレポジトリ変数で `LIVECAP_ENABLE_GPU_SMOKE=1` を設定してください。フェイルファストしたい場合は `LIVECAP_REQUIRE_ENGINE_SMOKE=1` も併用します。
@@ -85,6 +86,40 @@ uv run python -m pytest tests/core/engines
 - 依存不足・モデル未キャッシュ・CUDA なしでも失敗扱いにしたい場合は `LIVECAP_REQUIRE_ENGINE_SMOKE=1` を指定します。
 - CI では `Integration Tests` ワークフロー内で CPU/GPU スモークを分割実行します（GPU ジョブは self-hosted かつ環境変数が有効なときのみ起動）。
 
+## 環境変数
+
+| 変数名 | 用途 | デフォルト |
+| --- | --- | --- |
+| `LIVECAP_FFMPEG_BIN` | FFmpeg/FFprobe バイナリのディレクトリパス | 自動検出 |
+| `LIVECAP_ENABLE_GPU_SMOKE` | `1` で GPU スモークテストを有効化 | 未設定（skip） |
+| `LIVECAP_REQUIRE_ENGINE_SMOKE` | `1` でエンジンスモーク失敗時に skip ではなく fail | 未設定（skip） |
+| `LIVECAP_CORE_MODELS_DIR` | モデルキャッシュの保存先 | `~/.livecap/models` |
+| `LIVECAP_CORE_CACHE_DIR` | 一時キャッシュの保存先 | `~/.livecap/cache` |
+
+### Self-hosted ランナーの永続キャッシュパス
+
+Self-hosted GPU ランナーでは、モデルや依存パッケージの再ダウンロードを避けるため、以下のパスに永続キャッシュを配置しています：
+
+**Linux:**
+```
+$HOME/LiveCap/Cache/
+├── uv/          # uv パッケージキャッシュ
+├── models/      # ASR モデルキャッシュ
+├── cache/       # 一時キャッシュ
+└── ffmpeg-bin/  # FFmpeg バイナリ
+```
+
+**Windows:**
+```
+C:\LiveCap\Cache\
+├── uv\          # uv パッケージキャッシュ
+├── models\      # ASR モデルキャッシュ
+├── cache\       # 一時キャッシュ
+└── ffmpeg-bin\  # FFmpeg バイナリ
+```
+
+CI ワークフローはこれらのパスを環境変数（`UV_CACHE_DIR`, `LIVECAP_CORE_MODELS_DIR`, `LIVECAP_CORE_CACHE_DIR`, `LIVECAP_FFMPEG_BIN`）で参照します。
+
 ## CI Workflows
 
 ### 1. `transcription-pipeline`
@@ -97,15 +132,15 @@ uv run python -m pytest tests/core/engines
 *   **目的**: ASR エンジンの基本的な起動と動作確認（CPU）。
 *   **対象**: `tests/integration/engines/` (`-m "engine_smoke and not gpu"`).
 *   **環境**: GitHub-hosted (Ubuntu)。
-*   **検証エンジン**: Whisper (small/base)。※ReazonSpeech は ABI 問題のため除外。
+*   **検証エンジン**: Whisper base。※ReazonSpeech は ABI 問題のため除外。
 
 ### 3. `engine-smoke-gpu`
 *   **目的**: ASR エンジンの GPU 環境での動作確認。
 *   **対象**: `tests/integration/engines/` (`-m "engine_smoke and gpu"`).
 *   **環境**: Self-hosted GPU Runners (Linux/Windows)。
 *   **検証エンジン**:
-    *   Linux: Whisper, Parakeet。
-    *   Windows: Whisper, ReazonSpeech (CPU fallback可)。※Parakeet は Windows 互換性問題のため一時除外。
+    *   Linux: Whisper, Parakeet。※ReazonSpeech は ABI 問題のため除外。
+    *   Windows: Whisper, Parakeet, ReazonSpeech。
 *   **条件**: レポジトリ変数 `LIVECAP_ENABLE_GPU_SMOKE=1` が必要。
 
 ## CI 対応表
