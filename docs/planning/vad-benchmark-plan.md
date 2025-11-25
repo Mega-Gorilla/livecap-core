@@ -453,16 +453,115 @@ Generated: 2025-11-25 12:00:00
 2. Markdown 出力
 3. JSON 出力
 
-### Step 5: CI 統合（オプション）
+### Step 5: CI 統合
 
-1. GitHub Actions でのベンチマーク実行
-2. 結果の自動コミット
+1. GitHub Actions ワークフロー作成
+2. Windows self-hosted runner (RTX 4090) でのGPU ベンチマーク
+3. 結果の自動保存・比較
 
 ---
 
-## 9. 依存関係
+## 9. CI ワークフロー
 
-### 9.1 必須
+### 9.1 ワークフロー設計
+
+Windows self-hosted runner（RTX 4090 搭載）でベンチマークを実行し、高速なGPU推論を活用する。
+
+```yaml
+# .github/workflows/vad-benchmark.yml
+name: VAD Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      vad_backends:
+        description: 'VAD backends to benchmark (comma-separated or "all")'
+        required: false
+        default: 'all'
+      dataset:
+        description: 'Dataset to use'
+        required: false
+        default: 'builtin'
+        type: choice
+        options:
+          - builtin
+          - extended
+
+jobs:
+  benchmark-gpu:
+    name: GPU Benchmark (Windows RTX 4090)
+    runs-on: [self-hosted, windows]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup FFmpeg
+        run: |
+          $ffmpegBinDir = Join-Path $env:GITHUB_WORKSPACE "ffmpeg-bin"
+          # ... (既存の FFmpeg セットアップ)
+
+      - name: Setup Python environment
+        run: |
+          uv sync --extra vad --extra engines-torch --extra benchmark-vad
+
+      - name: Run VAD Benchmark
+        env:
+          LIVECAP_FFMPEG_BIN: ${{ github.workspace }}\ffmpeg-bin
+          LIVECAP_DEVICE: cuda
+        run: |
+          $backends = "${{ github.event.inputs.vad_backends }}"
+          if ($backends -eq "all") {
+            uv run python -m benchmarks.vad --all --output benchmark-results.json --format json
+          } else {
+            uv run python -m benchmarks.vad --vad $backends.Split(',') --output benchmark-results.json --format json
+          }
+
+      - name: Generate Markdown Report
+        run: |
+          uv run python -m benchmarks.vad --input benchmark-results.json --output benchmark-report.md --format markdown
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: vad-benchmark-results
+          path: |
+            benchmark-results.json
+            benchmark-report.md
+
+      - name: Post Summary
+        run: |
+          Get-Content benchmark-report.md | Add-Content $env:GITHUB_STEP_SUMMARY
+```
+
+### 9.2 実行トリガー
+
+| トリガー | 用途 |
+|----------|------|
+| `workflow_dispatch` | 手動実行（開発中・検証時） |
+| `schedule` | 定期実行（週次など、オプション） |
+| `pull_request` | PR 時の回帰テスト（軽量版、オプション） |
+
+### 9.3 出力・成果物
+
+| ファイル | 形式 | 用途 |
+|----------|------|------|
+| `benchmark-results.json` | JSON | 機械可読な結果、履歴比較用 |
+| `benchmark-report.md` | Markdown | 人間可読なレポート |
+| GitHub Step Summary | Markdown | PR/ワークフロー画面での即時確認 |
+
+### 9.4 ハードウェア要件
+
+| 環境 | GPU | 用途 |
+|------|-----|------|
+| **Windows self-hosted** | RTX 4090 (24GB) | メインベンチマーク（高速） |
+| Linux self-hosted (オプション) | GPU | クロスプラットフォーム検証 |
+| GitHub-hosted (fallback) | CPU only | GPU 不可時のフォールバック |
+
+---
+
+## 10. 依存関係
+
+### 10.1 必須
 
 ```
 silero-vad>=5.1
@@ -472,7 +571,7 @@ jiwer>=3.0
 numpy
 ```
 
-### 9.2 オプション
+### 10.2 オプション
 
 ```
 ten-vad          # TenVAD（ライセンス注意）
@@ -483,7 +582,7 @@ memory_profiler  # メモリ計測
 
 ---
 
-## 10. リスクと対策
+## 11. リスクと対策
 
 | リスク | 影響 | 対策 |
 |--------|------|------|
@@ -494,7 +593,7 @@ memory_profiler  # メモリ計測
 
 ---
 
-## 11. 参考資料
+## 12. 参考資料
 
 - [Silero VAD GitHub](https://github.com/snakers4/silero-vad)
 - [Silero VAD Quality Metrics](https://github.com/snakers4/silero-vad/wiki/Quality-Metrics)
