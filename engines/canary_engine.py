@@ -109,7 +109,11 @@ class CanaryEngine(BaseEngine):
             )
         
         self.report_progress(10, self.get_status_message("dependencies_complete"))
-    
+
+    def _get_local_model_path(self, models_dir: Path) -> Path:
+        """ローカルモデルパスを取得 (base_engine override for .nemo extension)"""
+        return models_dir / f"{self.model_name.replace('/', '--')}.nemo"
+
     def _prepare_model_directory(self) -> Path:
         """
         Step 2: モデルディレクトリの準備（10-15%）
