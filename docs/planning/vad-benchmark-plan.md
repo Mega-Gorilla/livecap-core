@@ -566,6 +566,146 @@ def measure_gpu_memory(func):
 | **Avg Duration** | 平均セグメント長 |
 | **Speech Ratio** | 音声区間の割合 |
 
+### 6.4 Raw vs Normalized メトリクス（Phase B 実装予定）
+
+**背景:**
+正規化前後の両方のメトリクスを報告することで、トレースアビリティを向上させる。
+
+| メトリクス | 説明 | 用途 |
+|-----------|------|------|
+| **WER/CER (Normalized)** | 正規化後（句読点除去、小文字化）| エンジン比較の主指標 |
+| **WER/CER (Raw)** | 正規化前（元のテキスト）| 句読点予測精度の把握 |
+
+**実装例:**
+```python
+@dataclass
+class BenchmarkResult:
+    # Primary metrics (normalized)
+    wer: float | None = None
+    cer: float | None = None
+
+    # Raw metrics (traceability)
+    wer_raw: float | None = None
+    cer_raw: float | None = None
+```
+
+**出力例:**
+```
+Engine        CER    CER(raw)   RTF   VRAM
+-----------  -----  ---------  ----  ------
+reazonspeech  3.2%     8.1%    0.15  2048MB
+whispers2t    5.1%    12.3%    0.08  3072MB
+```
+
+**メリット:**
+- 正規化の影響を定量的に把握
+- 句読点予測精度の比較が可能
+- デバッグ・分析時に有用
+
+### 6.5 統計的厳密性
+
+**ユースケース:** VAD × ASR の組み合わせ比較、結果は公開（論文ほどの厳密性は不要）
+
+#### 決定事項: 2モード制
+
+| モード | 実行回数 | 用途 | CLI |
+|--------|---------|------|-----|
+| **単一実行** | 1回 | 開発・CI・スクリプトテスト | `--runs 1`（デフォルト） |
+| **複数実行** | 3回 | 公開用ベンチマーク | `--runs 3` |
+
+#### メトリクス別の測定方法
+
+| メトリクス | 測定方法 | 理由 |
+|-----------|---------|------|
+| **RTF** | ウォームアップ1回 + N回測定 | GPU状態による変動を排除 |
+| **WER/CER** | ファイルごとに1回 | 決定的（同じ入力=同じ出力） |
+| **VRAM** | 1回のみ | ほぼ固定値 |
+
+#### RTF の変動要因
+
+| 要因 | 影響度 | 説明 |
+|------|--------|------|
+| GPU ウォームアップ | 高 | 初回推論はCUDAカーネルコンパイルで遅い |
+| GPU サーマルスロットリング | 中 | 温度上昇でクロック低下 |
+| メモリ状態 | 低 | VRAM断片化、キャッシュ状態 |
+
+**ウォームアップ後の期待変動幅:** ±5-10%（専用マシンでは ±2-5%）
+
+#### 実装例
+
+```python
+def benchmark_rtf(engine, audio, sample_rate, runs=3):
+    """RTF測定（ウォームアップ + N回測定）"""
+    # ウォームアップ（結果を破棄）
+    engine.transcribe(audio, sample_rate)
+
+    # 本番測定
+    times = []
+    for _ in range(runs):
+        start = time.perf_counter()
+        engine.transcribe(audio, sample_rate)
+        times.append(time.perf_counter() - start)
+
+    audio_duration = len(audio) / sample_rate
+    rtfs = [t / audio_duration for t in times]
+
+    return {
+        "mean": statistics.mean(rtfs),
+        "std": statistics.stdev(rtfs) if runs > 1 else 0,
+        "min": min(rtfs),
+        "max": max(rtfs),
+        "n_runs": runs,
+    }
+```
+
+#### 出力例（複数実行モード）
+
+```
+=== ASR Benchmark Results (3 runs) ===
+
+--- Japanese ---
+Engine        CER    RTF (mean±std)    VRAM
+-----------  -----  ----------------  ------
+reazonspeech  3.2%   0.15 ± 0.01     2048MB
+parakeet_ja   4.5%   0.12 ± 0.02     3584MB
+whispers2t    5.1%   0.08 ± 0.01     1536MB
+```
+
+#### CLI 使用例
+
+```bash
+# 開発時（高速）
+python -m benchmarks.asr --mode quick
+
+# 公開用（信頼性重視）
+python -m benchmarks.asr --mode standard --runs 3
+```
+
+### 6.6 既知の制限事項
+
+#### 日本語ひらがな/漢字表記揺れ
+
+**問題:**
+ASR出力とリファレンスで文字種（ひらがな/漢字）が異なる場合、CERに影響する。
+
+```
+リファレンス: "食べる"（漢字）
+ASR出力:     "たべる"（ひらがな）
+→ CER = 33%（意味的には同一）
+```
+
+**評価:**
+- **影響度: 低** - 現代の日本語ASRは漢字変換後のテキストを出力
+- **対応: ドキュメント化のみ** - ASRの言語モデルが異なる表記を選択した場合は、実質的な差異として扱う
+
+**理由:**
+1. ASRモデルは内部で言語モデルによる漢字変換を行う
+2. リファレンスコーパス（JSUT等）も漢字混じりの自然な日本語
+3. 表記の違いは字幕品質に影響するため、エラーとしてカウントするのは妥当
+
+**注記:**
+一部の表記揺れ（「子供」vs「子ども」等）は真のエラーではないが、全体のCERへの影響は限定的。
+
 ---
 
 ## 7. データセット
