@@ -14,7 +14,7 @@ livecap-cli の音声認識パイプライン全体を評価するための**統
 
 **VAD ベンチマーク + ASR ベンチマークを同時実装**し、以下を実現：
 
-- 複数の VAD バックエンド（11構成）を比較評価
+- 複数の VAD バックエンド（10構成）を比較評価
 - 全 ASR エンジン（10種類）の単体性能を評価
 - VAD × ASR の最適な組み合わせを発見
 
@@ -59,7 +59,7 @@ livecap-cli の音声認識パイプライン全体を評価するための**統
 
 | 含む | 含まない |
 |------|----------|
-| VAD × 全ASR評価（11 VAD × 10 ASR） | VAD/ASR の本番切り替え |
+| VAD × 全ASR評価（10 VAD × 10 ASR） | VAD/ASR の本番切り替え |
 | ASR 単体評価（10エンジン） | 新エンジン実装 |
 | 日本語・英語での評価 | 全言語での評価 |
 | CLI ベンチマークツール | GUI |
@@ -249,19 +249,18 @@ class BenchmarkEngineManager:
 │ VAD × ASR 評価マトリクス                                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  VAD (11構成)          ASR (10エンジン)         言語 (2+)       │
+│  VAD (10構成)          ASR (10エンジン)         言語 (2+)       │
 │  ┌─────────────┐      ┌─────────────────┐      ┌──────────┐    │
-│  │ Silero v5   │      │ reazonspeech    │──ja──│ Japanese │    │
-│  │ Silero v6   │      │ parakeet_ja     │──ja──│          │    │
-│  │ TenVAD      │  ×   │ parakeet        │──en──│ English  │    │
-│  │ JaVAD tiny  │      │ canary          │──en──│          │    │
-│  │ JaVAD bal.  │      │ voxtral         │──en──│          │    │
-│  │ JaVAD prec. │      │ whispers2t_*    │──all─│          │    │
-│  │ WebRTC 0-3  │      └─────────────────┘      └──────────┘    │
-│  └─────────────┘                                                 │
+│  │ Silero v6   │      │ reazonspeech    │──ja──│ Japanese │    │
+│  │ TenVAD      │      │ parakeet_ja     │──ja──│          │    │
+│  │ JaVAD tiny  │  ×   │ parakeet        │──en──│ English  │    │
+│  │ JaVAD bal.  │      │ canary          │──en──│          │    │
+│  │ JaVAD prec. │      │ voxtral         │──en──│          │    │
+│  │ WebRTC 0-3  │      │ whispers2t_*    │──all─│          │    │
+│  └─────────────┘      └─────────────────┘      └──────────┘    │
 │                                                                  │
-│  Full Matrix: 11 VAD × 10 ASR × 2 Lang = 220 combinations       │
-│  Practical:   11 VAD × 3-4 ASR/lang × 2 Lang ≈ 66-88 tests     │
+│  Full Matrix: 10 VAD × 10 ASR × 2 Lang = 200 combinations       │
+│  Practical:   10 VAD × 3-4 ASR/lang × 2 Lang ≈ 60-80 tests     │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -337,12 +336,11 @@ else:
 
 ### 5.1 ベンチマーク対象
 
-**合計 11 構成**:
+**合計 10 構成**（Silero v5 は v6 の上位互換のため除外）:
 
 | VAD | モデル/設定 | ライセンス | 特徴 |
 |-----|------------|-----------|------|
-| Silero VAD v5 | ONNX | MIT | 旧バージョン、比較用 |
-| Silero VAD v6 | ONNX | MIT | 現在のデフォルト |
+| Silero VAD v6 | ONNX | MIT | 現在のデフォルト、高精度 |
 | TenVAD | - | 独自 | 最軽量・最高速（評価のみ） |
 | JaVAD | tiny | MIT | 0.64s window、即時検出向け |
 | JaVAD | balanced | MIT | 1.92s window、バランス型 |
@@ -474,22 +472,59 @@ export LIVECAP_LIBRISPEECH_DIR=/path/to/librispeech/test-clean
 
 ## 8. 実装ステップ
 
-### 概要: 効率的な実装順序
+### 概要: Phase A/B/C アプローチ
 
 ```
-Step 1: 共通基盤 (common/)     ─┐
-                                ├─ ASRベンチマーク完成
-Step 2: ASR ランナー (asr/)    ─┘
-
-Step 3: VAD バックエンド        ─┐
-                                ├─ VADベンチマーク完成
-Step 4: VAD ランナー (vad/)    ─┘
-
-Step 5: CLI 統合
-Step 6: CI 統合
+┌─────────────────────────────────────────────────────────────┐
+│ Phase A: 基盤構築                                            │
+├─────────────────────────────────────────────────────────────┤
+│ A-1. エンジン動作確認 (self-hosted runner)                   │
+│ A-2. データセット管理実装 (builtin + 外部参照)               │
+│ A-3. 共通モジュール (metrics.py, reports.py)                │
+│ A-4. pyproject.toml に benchmark extra 追加                 │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Phase B: ASR ベンチマーク                                    │
+├─────────────────────────────────────────────────────────────┤
+│ B-1. ASR runner 実装                                         │
+│ B-2. CLI 実装 (python -m benchmarks.asr)                    │
+│ B-3. 動作するエンジンでベンチマーク実行                       │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Phase C: VAD ベンチマーク                                    │
+├─────────────────────────────────────────────────────────────┤
+│ C-1. VAD バックエンド実装 (JaVAD, WebRTC)                    │
+│ C-2. VAD runner 実装                                         │
+│ C-3. CI ワークフロー設定                                     │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Step 1: 共通基盤構築 (2-3日)
+**実装理由:**
+1. **動作確認が先**: 壊れたエンジンでベンチマークしても無意味
+2. **データセットが先**: ベンチマークの価値はデータ品質で決まる
+3. **ASR が先**: VAD は ASR の上に構築（依存関係）
+
+---
+
+### Phase A: 基盤構築
+
+#### A-1. エンジン動作確認
+
+self-hosted runner で全10エンジンの smoke test を実行:
+
+```bash
+uv run pytest tests/integration/engines -m engine_smoke
+```
+
+動作しないエンジンを特定し、ベンチマーク対象から除外または修正。
+
+#### A-2. データセット管理実装
+
+**TODO: 議論が必要** - builtin セットの規模、外部データセット参照方法
+
+#### A-3. 共通モジュール (Step 1 相当)
 
 **対象:** `benchmarks/common/`
 
@@ -510,7 +545,11 @@ Step 6: CI 統合
    - Markdown 出力
    - コンソール表形式出力
 
-### Step 2: ASR ベンチマーク実装 (1日)
+---
+
+### Phase B: ASR ベンチマーク
+
+#### B-1. ASR runner 実装
 
 **対象:** `benchmarks/asr/`
 
@@ -576,17 +615,21 @@ class ASRBenchmarkRunner:
             engine.cleanup()
 ```
 
-### Step 3: VAD バックエンド実装 (2日)
+---
+
+### Phase C: VAD ベンチマーク
+
+#### C-1. VAD バックエンド実装
 
 **対象:** `benchmarks/vad/backends/`
 
 1. **base.py** - VADBackend Protocol
-2. **silero.py** - Silero VAD v5/v6
+2. **silero.py** - Silero VAD v6（既存 `livecap_core/vad/backends/silero.py` をラップ）
 3. **javad.py** - JaVAD tiny/balanced/precise
 4. **webrtc.py** - WebRTC VAD mode 0-3
 5. **tenvad.py** - TenVAD
 
-### Step 4: VAD ベンチマーク実装 (1日)
+#### C-2. VAD runner 実装
 
 **対象:** `benchmarks/vad/`
 
@@ -640,14 +683,18 @@ class VADBenchmarkRunner:
         )
 ```
 
-### Step 5: CLI 統合 (0.5日)
+#### B-2. CLI 統合 (ASR)
 
 ```bash
 # ASR ベンチマーク
 python -m benchmarks.asr --all
 python -m benchmarks.asr --engine reazonspeech parakeet_ja --language ja
 python -m benchmarks.asr --mode quick --output results.json
+```
 
+#### C-3. CLI 統合 (VAD) + CI ワークフロー
+
+```bash
 # VAD ベンチマーク
 python -m benchmarks.vad --all
 python -m benchmarks.vad --vad silero_v6 javad_precise --asr reazonspeech
@@ -657,9 +704,7 @@ python -m benchmarks.vad --mode standard --format markdown
 python -m benchmarks --all --output report.md
 ```
 
-### Step 6: CI 統合 (0.5日)
-
-GitHub Actions ワークフロー作成（詳細は後述）。
+GitHub Actions ワークフロー作成（詳細は Section 11）。
 
 ---
 
@@ -771,7 +816,7 @@ Lowest VRAM:       reazonspeech (Peak: 523 MB)
 === VAD Benchmark Results ===
 
 Dataset: tests/assets/audio (2 files)
-Mode: Standard (11 VAD × 3 ASR/lang)
+Mode: Standard (10 VAD × 3 ASR/lang)
 
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ Japanese Results (reazonspeech)                                          │
@@ -937,8 +982,8 @@ jobs:
 | モード | ASR テスト | VAD テスト | 推定時間 |
 |--------|-----------|-----------|---------|
 | `quick` | 4 (言語別2) | 12 (3 VAD × 2 ASR × 2 lang) | ~5分 |
-| `standard` | 10 (言語別全) | 44-66 (11 VAD × 2-3 ASR × 2 lang) | ~20分 |
-| `full` | 20 (全組み合わせ) | 88+ (11 VAD × 全ASR × 2 lang) | ~60分 |
+| `standard` | 10 (言語別全) | 40-60 (10 VAD × 2-3 ASR × 2 lang) | ~20分 |
+| `full` | 20 (全組み合わせ) | 80+ (10 VAD × 全ASR × 2 lang) | ~60分 |
 
 ---
 
