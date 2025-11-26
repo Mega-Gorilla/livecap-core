@@ -152,71 +152,17 @@ benchmarks/
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.3 共通コンポーネント
+### 2.3 共通コンポーネント (✅ 実装済み)
 
-#### metrics.py
+> 実装: `benchmarks/common/`
 
-```python
-from dataclasses import dataclass
-from jiwer import wer, cer
-import time
-
-@dataclass
-class BenchmarkMetrics:
-    """ベンチマーク評価指標"""
-    wer: float                      # Word Error Rate
-    cer: float                      # Character Error Rate
-    rtf: float                      # Real-Time Factor
-    latency_ms: float               # 処理遅延
-    memory_mb: float                # ピークRAM使用量
-    gpu_memory_model_mb: float      # モデルロード後のVRAM使用量
-    gpu_memory_peak_mb: float       # 推論中のピークVRAM使用量
-
-def calculate_wer(reference: str, hypothesis: str) -> float:
-    """WER を計算"""
-    return wer(reference, hypothesis)
-
-def calculate_cer(reference: str, hypothesis: str) -> float:
-    """CER を計算（日本語向け）"""
-    return cer(reference, hypothesis)
-
-def calculate_rtf(audio_duration: float, processing_time: float) -> float:
-    """Real-Time Factor を計算"""
-    return processing_time / audio_duration if audio_duration > 0 else 0.0
-```
-
-#### engines.py
-
-```python
-from engines.metadata import EngineMetadata
-from engines.engine_factory import EngineFactory
-
-class BenchmarkEngineManager:
-    """ベンチマーク用 ASR エンジン管理"""
-
-    @staticmethod
-    def get_engines_for_language(language: str) -> list[str]:
-        """言語に対応するエンジン一覧を取得"""
-        return EngineMetadata.get_engines_for_language(language)
-
-    @staticmethod
-    def create_engine(engine_id: str, device: str = "cuda", language: str = "ja"):
-        """ベンチマーク用エンジンを作成（VAD無効化）"""
-        config = {"transcription": {"input_language": language}}
-
-        # WhisperS2T のみ内蔵 VAD を無効化
-        if engine_id.startswith("whispers2t_"):
-            config["whispers2t"] = {"use_vad": False}
-
-        engine = EngineFactory.create_engine(engine_id, device=device, config=config)
-        engine.load_model()
-        return engine
-
-    @staticmethod
-    def get_all_engines() -> dict:
-        """全エンジン情報を取得"""
-        return EngineMetadata.get_all()
-```
+| モジュール | 機能 |
+|-----------|------|
+| `metrics.py` | WER/CER/RTF計算、GPUMemoryTracker |
+| `text_normalization.py` | 言語別テキスト正規化 |
+| `datasets.py` | AudioFile (lazy load)、Dataset、DatasetManager |
+| `engines.py` | BenchmarkEngineManager (キャッシュ、VAD無効化) |
+| `reports.py` | BenchmarkReporter (JSON/Markdown/Console出力) |
 
 ---
 
@@ -355,129 +301,17 @@ else:
 | WebRTC VAD | mode 2 | BSD | 厳格 |
 | WebRTC VAD | mode 3 | BSD | 最も厳格、見逃し多 |
 
-### 5.2 VAD バックエンド設計 (engines/ パターン踏襲)
+### 5.2 VAD バックエンド設計 (Phase C で実装予定)
 
-`engines/` の設計パターン（Protocol + Factory）を踏襲し、一貫した API を提供。
+`engines/` の設計パターン（Protocol + Factory）を踏襲。
 
-#### VADBackend Protocol
+**設計方針:**
+- `VADBackend` Protocol: `name`, `load()`, `process()`, `cleanup()` メソッド
+- `VADFactory`: バックエンド生成ファクトリ（`engines/engine_factory.py` パターン）
+- 実装先: `benchmarks/vad/backends/`
 
-```python
-# benchmarks/vad/backends/base.py
-from typing import Protocol, List, Tuple
-import numpy as np
-
-class VADBackend(Protocol):
-    """VAD バックエンドの共通インターフェース"""
-
-    @property
-    def name(self) -> str:
-        """バックエンド名 (例: 'silero_v6', 'javad_precise')"""
-        ...
-
-    def load(self) -> None:
-        """モデルをロード"""
-        ...
-
-    def process(
-        self,
-        audio: np.ndarray,
-        sample_rate: int = 16000,
-    ) -> List[Tuple[float, float]]:
-        """
-        音声から発話区間を検出
-
-        Returns:
-            [(start_sec, end_sec), ...] のリスト
-        """
-        ...
-
-    def cleanup(self) -> None:
-        """リソース解放"""
-        ...
-```
-
-#### バックエンド実装例
-
-```python
-# benchmarks/vad/backends/silero.py
-class SileroVADBackend:
-    def __init__(self, version: str = "v6", threshold: float = 0.5):
-        self._version = version
-        self._threshold = threshold
-        self._model = None
-
-    @property
-    def name(self) -> str:
-        return f"silero_{self._version}"
-
-    def load(self) -> None:
-        from silero_vad import load_silero_vad
-        self._model = load_silero_vad(onnx=True)
-
-    def process(self, audio: np.ndarray, sample_rate: int = 16000) -> List[Tuple[float, float]]:
-        from silero_vad import get_speech_timestamps
-        timestamps = get_speech_timestamps(audio, self._model, threshold=self._threshold)
-        return [(t['start'] / sample_rate, t['end'] / sample_rate) for t in timestamps]
-
-    def cleanup(self) -> None:
-        self._model = None
-
-
-# benchmarks/vad/backends/javad.py
-class JaVADBackend:
-    def __init__(self, model_name: str = "balanced"):  # tiny, balanced, precise
-        self._model_name = model_name
-        self._processor = None
-
-    @property
-    def name(self) -> str:
-        return f"javad_{self._model_name}"
-
-    def load(self) -> None:
-        from javad import Processor
-        self._processor = Processor(model_name=self._model_name)
-    # ...
-```
-
-#### VADFactory
-
-```python
-# benchmarks/vad/factory.py
-class VADFactory:
-    """VAD バックエンド生成ファクトリ (EngineFactory パターン踏襲)"""
-
-    _REGISTRY = {
-        "silero_v6": lambda: SileroVADBackend(version="v6"),
-        "javad_tiny": lambda: JaVADBackend(model_name="tiny"),
-        "javad_balanced": lambda: JaVADBackend(model_name="balanced"),
-        "javad_precise": lambda: JaVADBackend(model_name="precise"),
-        "webrtc_0": lambda: WebRTCVADBackend(mode=0),
-        "webrtc_1": lambda: WebRTCVADBackend(mode=1),
-        "webrtc_2": lambda: WebRTCVADBackend(mode=2),
-        "webrtc_3": lambda: WebRTCVADBackend(mode=3),
-        "tenvad": lambda: TenVADBackend(),
-    }
-
-    @classmethod
-    def create(cls, vad_id: str) -> VADBackend:
-        if vad_id not in cls._REGISTRY:
-            raise ValueError(f"Unknown VAD: {vad_id}")
-        backend = cls._REGISTRY[vad_id]()
-        backend.load()
-        return backend
-
-    @classmethod
-    def get_available(cls) -> List[str]:
-        return list(cls._REGISTRY.keys())
-```
-
-**設計のメリット:**
-- `engines/` と一貫した設計パターン
-- 新しいVADバックエンドの追加が容易
-- テストしやすい（モック化しやすい）
-
-**既存 `livecap_core/vad/backends/silero.py` との関係:**
-- 既存: ストリーミング処理向け（チャンク → 確率）
+**既存コードとの関係:**
+- `livecap_core/vad/backends/silero.py`: ストリーミング処理向け
 - ベンチマーク用: バッチ処理向け（音声全体 → セグメントリスト）
 - 用途が異なるため、別クラスとして実装
 
@@ -912,32 +746,11 @@ tests/assets/prepared/
 
 ### 概要: Phase A/B/C アプローチ
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Phase A: 基盤構築                                            │
-├─────────────────────────────────────────────────────────────┤
-│ A-1. エンジン動作確認 (self-hosted runner)                   │
-│ A-2. データセット管理実装 (builtin + 外部参照)               │
-│ A-3. 共通モジュール (metrics.py, reports.py)                │
-│ A-4. pyproject.toml に benchmark extra 追加                 │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Phase B: ASR ベンチマーク                                    │
-├─────────────────────────────────────────────────────────────┤
-│ B-1. ASR runner 実装                                         │
-│ B-2. CLI 実装 (python -m benchmarks.asr)                    │
-│ B-3. 動作するエンジンでベンチマーク実行                       │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Phase C: VAD ベンチマーク                                    │
-├─────────────────────────────────────────────────────────────┤
-│ C-1. VAD バックエンド実装 (JaVAD, WebRTC)                    │
-│ C-2. VAD runner 実装                                         │
-│ C-3. CI ワークフロー設定                                     │
-└─────────────────────────────────────────────────────────────┘
-```
+| Phase | 内容 | ステータス |
+|-------|------|----------|
+| **A** | 基盤構築 | ✅ 完了 |
+| **B** | ASR ベンチマーク | 🔜 次 |
+| **C** | VAD ベンチマーク | 📋 計画済み |
 
 **実装理由:**
 1. **動作確認が先**: 壊れたエンジンでベンチマークしても無意味
@@ -946,286 +759,52 @@ tests/assets/prepared/
 
 ---
 
-### Phase A: 基盤構築
+### Phase A: 基盤構築 (✅ 完了)
 
-#### A-1. エンジン動作確認
-
-self-hosted runner で全10エンジンの smoke test を実行:
-
-```bash
-uv run pytest tests/integration/engines -m engine_smoke
-```
-
-動作しないエンジンを特定し、ベンチマーク対象から除外または修正。
-
-#### A-2. データセット管理実装
-
-**対象:**
-- `scripts/prepare_benchmark_data.py` - 変換スクリプト
-- `tests/assets/audio/` の再構成（言語別フォルダ）
-- 既存コードのパス参照修正
-
-**実装内容:**
-
-1. **audio/ 再構成** (Section 7.2 参照)
-   - `tests/assets/audio/ja/`, `tests/assets/audio/en/` フォルダ作成
-   - 既存ファイルを言語別フォルダに移動
-   - ファイル名から `_ja`/`_en` サフィックスを削除
-
-2. **既存コード修正** (~11ファイル)
-   - テストコード: パス参照更新
-   - サンプルコード: パス参照更新
-   - `tests/utils/text_normalization.py`: `get_language_from_filename()` をフォルダベースに更新
-   - `tests/assets/README.md`: ドキュメント更新
-
-3. **変換スクリプト作成** (`scripts/prepare_benchmark_data.py`)
-   ```python
-   def prepare_jsut(source_dir, output_dir, limit=None):
-       """JSUT → 統一フォーマット変換"""
-       # transcript_utf8.txt 読み込み
-       # WAV 正規化 (16kHz mono, -1dBFS)
-       # prepared/ja/ へ出力
-
-   def prepare_librispeech(source_dir, output_dir, limit=None):
-       """LibriSpeech → 統一フォーマット変換"""
-       # *.trans.txt 読み込み
-       # FLAC → WAV 変換 + 正規化
-       # prepared/en/ へ出力
-   ```
-
-4. **.gitignore 更新**
-   - `tests/assets/prepared/` を追加
-
-#### A-3. 共通モジュール
-
-**対象:** `benchmarks/common/`
-
-1. **metrics.py** - WER/CER/RTF/VRAM 計算
-   - jiwer ライブラリ活用
-   - GPU メモリ測定（torch.cuda）
-   - RAM メモリ測定（tracemalloc）
-
-2. **text_normalization.py** - テキスト正規化（独立モジュール）
-   - `tests/utils/text_normalization.py` からコピー・独立化
-   - 理由: `tests/` からのインポートを避け、ベンチマークを独立させる
-   - `normalize_en()`, `normalize_ja()`, `normalize_text()` を提供
-
-3. **datasets.py** - データセット管理
-   ```python
-   class DatasetManager:
-       def get_dataset(self, mode: str = "auto") -> Dataset:
-           """
-           mode:
-           - "quick": audio/ (git追跡)
-           - "standard": prepared/ (100ファイル/言語) - prepared/ 必須
-           - "full": prepared/ (全ファイル) - prepared/ 必須
-           - "auto": prepared > audio の順で自動選択
-           """
-   ```
-
-   **実装方針:**
-   - AudioFile は **Lazy ロード**（イテレート時に音声読み込み）
-   - standard/full モードで `prepared/` が存在しない場合は**エラー**
-     - `scripts/prepare_benchmark_data.py` の実行を促すメッセージを表示
-
-4. **engines.py** - ASR エンジン管理
-   - EngineFactory ラッパー
-   - VAD 無効化設定（WhisperS2T の `use_vad=False`）
-
-   **エンジンキャッシュ戦略:**
-   ```python
-   class BenchmarkEngineManager:
-       _cache: dict[str, BaseEngine] = {}
-
-       def create_engine(self, engine_id: str, device: str, language: str):
-           """エンジンを取得（キャッシュがあれば再利用）"""
-           cache_key = f"{engine_id}_{device}_{language}"
-           if cache_key not in self._cache:
-               engine = EngineFactory.create_engine(...)
-               engine.load_model()
-               self._cache[cache_key] = engine
-           return self._cache[cache_key]
-
-       def clear_cache(self):
-           """ベンチマーク終了時に全エンジンをクリーンアップ"""
-           for engine in self._cache.values():
-               engine.cleanup()
-           self._cache.clear()
-   ```
-
-   **GPU メモリ測定との整合:**
-   - Model memory: 初回ロード時に1回測定
-   - Peak memory: 各推論前に `reset_peak_memory_stats()` でリセット
-
-5. **reports.py** - レポート生成
-   - JSON 出力
-   - Markdown 出力
-   - コンソール表形式出力（`tabulate` ライブラリ使用）
-   - **出力フォーマットの詳細は Phase B で調整**
+| タスク | PR | 内容 |
+|--------|-----|------|
+| A-1 | #91-95 | 全10エンジンの smoke test 完了 |
+| A-2a | #97 | `tests/assets/audio/` を言語別フォルダに再構成 |
+| A-2b | #98 | `scripts/prepare_benchmark_data.py` 作成 |
+| A-3 | #100 | `benchmarks/common/` 実装 |
+| A-4 | #100 | `pyproject.toml` に benchmark extra 追加 |
 
 ---
 
-### Phase B: ASR ベンチマーク
-
-#### B-1. ASR runner 実装
+### Phase B: ASR ベンチマーク (🔜 実装予定)
 
 **対象:** `benchmarks/asr/`
 
-```python
-# benchmarks/asr/runner.py
-class ASRBenchmarkRunner:
-    def __init__(self, engines: list[str], languages: list[str], device: str = "cuda"):
-        self.engine_manager = BenchmarkEngineManager()
-        self.engines = engines
-        self.languages = languages
-        self.device = device
+| タスク | 内容 |
+|--------|------|
+| B-1 | `ASRBenchmarkRunner` 実装 |
+| B-2 | CLI 実装 (`python -m benchmarks.asr`) |
+| B-3 | 動作確認とベンチマーク実行 |
 
-    def run(self, dataset: Dataset) -> list[ASRBenchmarkResult]:
-        results = []
-        for engine_id in self.engines:
-            for audio_file in dataset.get_files_for_engine(engine_id):
-                result = self._benchmark_single(engine_id, audio_file)
-                results.append(result)
-        return results
-
-    def _benchmark_single(self, engine_id: str, audio_file: AudioFile) -> ASRBenchmarkResult:
-        import torch
-
-        # GPU メモリ測定準備
-        if torch.cuda.is_available():
-            torch.cuda.reset_peak_memory_stats()
-            torch.cuda.synchronize()
-
-        engine = self.engine_manager.create_engine(engine_id, self.device, audio_file.language)
-
-        # モデルロード後の VRAM 使用量
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-            gpu_memory_model = torch.cuda.memory_allocated() / 1024**2
-        else:
-            gpu_memory_model = None
-
-        try:
-            start_time = time.perf_counter()
-            transcript, _ = engine.transcribe(audio_file.audio, audio_file.sample_rate)
-            elapsed = time.perf_counter() - start_time
-
-            # 推論後のピーク VRAM 使用量
-            if torch.cuda.is_available():
-                torch.cuda.synchronize()
-                gpu_memory_peak = torch.cuda.max_memory_allocated() / 1024**2
-            else:
-                gpu_memory_peak = None
-
-            return ASRBenchmarkResult(
-                engine=engine_id,
-                language=audio_file.language,
-                audio_file=audio_file.path,
-                transcript=transcript,
-                reference=audio_file.transcript,
-                wer=calculate_wer(audio_file.transcript, transcript),
-                cer=calculate_cer(audio_file.transcript, transcript),
-                rtf=calculate_rtf(audio_file.duration, elapsed),
-                gpu_memory_model_mb=gpu_memory_model,
-                gpu_memory_peak_mb=gpu_memory_peak,
-            )
-        finally:
-            engine.cleanup()
+**CLI 使用例:**
+```bash
+python -m benchmarks.asr --mode quick
+python -m benchmarks.asr --engine parakeet_ja whispers2t_large_v3 --language ja
+python -m benchmarks.asr --mode standard --runs 3 --output results.json
 ```
 
 ---
 
-### Phase C: VAD ベンチマーク
-
-#### C-1. VAD バックエンド実装
-
-**対象:** `benchmarks/vad/backends/` および `benchmarks/vad/factory.py`
-
-Section 5.2 の設計（engines/ パターン踏襲）に従って実装:
-
-1. **base.py** - VADBackend Protocol（load, process, cleanup メソッド）
-2. **silero.py** - SileroVADBackend（`get_speech_timestamps()` 使用、バッチ処理向け）
-3. **javad.py** - JaVADBackend（tiny/balanced/precise）
-4. **webrtc.py** - WebRTCVADBackend（mode 0-3）
-5. **tenvad.py** - TenVADBackend
-6. **factory.py** - VADFactory（VADBackend 生成ファクトリ）
-
-#### C-2. VAD runner 実装
+### Phase C: VAD ベンチマーク (📋 計画済み)
 
 **対象:** `benchmarks/vad/`
 
-```python
-# benchmarks/vad/runner.py
-class VADBenchmarkRunner:
-    def __init__(
-        self,
-        vad_backends: list[VADBackend],
-        asr_engines: list[str],
-        device: str = "cuda"
-    ):
-        self.vad_backends = vad_backends
-        self.asr_runner = ASRBenchmarkRunner(asr_engines, [], device)
+| タスク | 内容 |
+|--------|------|
+| C-1 | VAD バックエンド実装（Section 5.2 参照） |
+| C-2 | `VADBenchmarkRunner` 実装 |
+| C-3 | CI ワークフロー設定 |
 
-    def run(self, dataset: Dataset) -> list[VADBenchmarkResult]:
-        results = []
-        for vad in self.vad_backends:
-            for engine_id in self.asr_runner.engines:
-                for audio_file in dataset.get_files_for_engine(engine_id):
-                    result = self._benchmark_single(vad, engine_id, audio_file)
-                    results.append(result)
-        return results
-
-    def _benchmark_single(
-        self,
-        vad: VADBackend,
-        engine_id: str,
-        audio_file: AudioFile
-    ) -> VADBenchmarkResult:
-        # VAD処理
-        vad.reset()
-        segments = vad.process(audio_file.audio, audio_file.sample_rate)
-
-        # セグメントごとにASR実行
-        transcripts = []
-        engine = self.asr_runner.engine_manager.create_engine(...)
-        try:
-            for start, end in segments:
-                segment_audio = audio_file.audio[int(start*sr):int(end*sr)]
-                text, _ = engine.transcribe(segment_audio, sr)
-                transcripts.append(text)
-        finally:
-            engine.cleanup()
-
-        full_transcript = " ".join(transcripts)
-        return VADBenchmarkResult(
-            vad=vad.name,
-            asr=engine_id,
-            # ... metrics ...
-        )
-```
-
-#### B-2. CLI 統合 (ASR)
-
+**CLI 使用例:**
 ```bash
-# ASR ベンチマーク
-python -m benchmarks.asr --all
-python -m benchmarks.asr --engine reazonspeech parakeet_ja --language ja
-python -m benchmarks.asr --mode quick --output results.json
-```
-
-#### C-3. CLI 統合 (VAD) + CI ワークフロー
-
-```bash
-# VAD ベンチマーク
-python -m benchmarks.vad --all
-python -m benchmarks.vad --vad silero_v6 javad_precise --asr reazonspeech
+python -m benchmarks.vad --vad silero_v6 javad_precise --asr parakeet_ja
 python -m benchmarks.vad --mode standard --format markdown
-
-# 両方実行
-python -m benchmarks --all --output report.md
 ```
-
-GitHub Actions ワークフロー作成（詳細は Section 11）。
 
 ---
 
@@ -1296,129 +875,25 @@ python -m benchmarks --type vad --mode full
 
 ## 10. 出力フォーマット
 
-> **注:** 出力設計（サマリーレポート、生データ出力、詳細比較）の詳細は別途議論中。
-> CLI 表示のみでなく、以下の出力が必要:
-> - サマリーレポート（Markdown）
-> - 生データ（JSON: 文字起こし結果、教師データ、スコア）
-> - 詳細比較（transcript vs reference の差分表示）
+> **注:** 出力設計の詳細は別途議論中
 
-### 10.1 ASR ベンチマーク結果
+### 10.1 出力要件
 
-```
-=== ASR Benchmark Results ===
+| 出力 | 形式 | 内容 |
+|------|------|------|
+| **サマリーレポート** | Markdown | エンジン×言語ごとの集約結果、Best/Fastest等 |
+| **生データ** | JSON | 各ファイルの文字起こし結果、教師データ、スコア |
+| **詳細比較** | Markdown | transcript vs reference の並列表示 |
 
-Dataset: tests/assets/audio (2 files)
-Device: cuda (RTX 4090)
+### 10.2 出力項目
 
-┌───────────────────────────────────────────────────────────────────────────────────────┐
-│ Japanese Results                                                                       │
-├─────────────────┬────────┬────────┬────────┬──────────┬───────────────┬───────────────┤
-│ Engine          │ WER    │ CER    │ RTF    │ RAM      │ VRAM (Model)  │ VRAM (Peak)   │
-├─────────────────┼────────┼────────┼────────┼──────────┼───────────────┼───────────────┤
-│ reazonspeech    │ 3.2%   │ 1.1%   │ 0.08   │ 245 MB   │ 412 MB        │ 523 MB        │
-│ parakeet_ja     │ 4.5%   │ 1.8%   │ 0.12   │ 1.2 GB   │ 1.8 GB        │ 2.1 GB        │
-│ whispers2t_base │ 5.8%   │ 2.3%   │ 0.15   │ 312 MB   │ 890 MB        │ 1.1 GB        │
-└─────────────────┴────────┴────────┴────────┴──────────┴───────────────┴───────────────┘
+**ASR ベンチマーク:**
+- Engine, Language, WER, CER, RTF, VRAM (Model/Peak)
+- Best by language, Fastest, Lowest VRAM
 
-┌───────────────────────────────────────────────────────────────────────────────────────┐
-│ English Results                                                                        │
-├─────────────────┬────────┬────────┬────────┬──────────┬───────────────┬───────────────┤
-│ Engine          │ WER    │ CER    │ RTF    │ RAM      │ VRAM (Model)  │ VRAM (Peak)   │
-├─────────────────┼────────┼────────┼────────┼──────────┼───────────────┼───────────────┤
-│ parakeet        │ 3.8%   │ 2.1%   │ 0.10   │ 1.4 GB   │ 2.2 GB        │ 2.5 GB        │
-│ canary          │ 4.2%   │ 2.5%   │ 0.14   │ 1.8 GB   │ 2.8 GB        │ 3.2 GB        │
-│ whispers2t_base │ 5.1%   │ 3.0%   │ 0.12   │ 312 MB   │ 890 MB        │ 1.1 GB        │
-└─────────────────┴────────┴────────┴────────┴──────────┴───────────────┴───────────────┘
-
-=== Summary ===
-Best for Japanese: reazonspeech (CER: 1.1%)
-Best for English:  parakeet (WER: 3.8%)
-Fastest overall:   reazonspeech (RTF: 0.08)
-Lowest VRAM:       reazonspeech (Peak: 523 MB)
-```
-
-### 10.2 VAD ベンチマーク結果
-
-```
-=== VAD Benchmark Results ===
-
-Dataset: tests/assets/audio (2 files)
-Mode: Standard (10 VAD × 3 ASR/lang)
-
-┌─────────────────────────────────────────────────────────────────────────┐
-│ Japanese Results (reazonspeech)                                          │
-├─────────────┬────────┬────────┬────────┬──────────┬──────────┬─────────┤
-│ VAD         │ WER    │ CER    │ RTF    │ Segments │ Memory   │ Status  │
-├─────────────┼────────┼────────┼────────┼──────────┼──────────┼─────────┤
-│ Silero v6   │ 5.2%   │ 2.1%   │ 0.012  │ 3        │ 245 MB   │ ✓       │
-│ JaVAD prec. │ 4.1%   │ 1.5%   │ 0.015  │ 3        │ 312 MB   │ ✓       │
-│ WebRTC m3   │ 8.3%   │ 4.2%   │ 0.003  │ 6        │ 128 MB   │ ✓       │
-└─────────────┴────────┴────────┴────────┴──────────┴──────────┴─────────┘
-
-=== Summary ===
-Best VAD for Japanese: JaVAD precise (CER: 1.5%)
-Best VAD for English:  JaVAD precise (WER: 4.2%)
-Fastest VAD:           WebRTC mode 3 (RTF: 0.003)
-```
-
-### 10.3 JSON 出力
-
-```json
-{
-  "metadata": {
-    "timestamp": "2025-11-25T12:00:00Z",
-    "device": "cuda (RTX 4090)",
-    "benchmark_type": "both",
-    "mode": "standard"
-  },
-  "asr_results": [
-    {
-      "engine": "reazonspeech",
-      "language": "ja",
-      "audio_file": "jsut_basic5000_0001_ja.wav",
-      "metrics": {
-        "wer": 0.032,
-        "cer": 0.011,
-        "rtf": 0.08,
-        "memory_mb": 245,
-        "gpu_memory_model_mb": 412,
-        "gpu_memory_peak_mb": 523
-      }
-    }
-  ],
-  "vad_results": [
-    {
-      "vad": "silero_v6",
-      "asr": "reazonspeech",
-      "language": "ja",
-      "metrics": {
-        "wer": 0.052,
-        "cer": 0.021,
-        "rtf": 0.012,
-        "segments": 3
-      }
-    }
-  ],
-  "summary": {
-    "best_asr_by_language": {
-      "ja": {"engine": "reazonspeech", "cer": 0.011},
-      "en": {"engine": "parakeet", "wer": 0.038}
-    },
-    "best_vad_by_language": {
-      "ja": {"vad": "javad_precise", "cer": 0.015},
-      "en": {"vad": "javad_precise", "wer": 0.042}
-    },
-    "lowest_vram": {
-      "engine": "reazonspeech",
-      "gpu_memory_peak_mb": 523
-    },
-    "fastest": {
-      "engine": "reazonspeech",
-      "rtf": 0.08
-    }
-  }
-}
-```
+**VAD ベンチマーク:**
+- VAD, ASR, Language, WER, CER, RTF, Segments
+- Best VAD by language, Fastest VAD
 
 ---
 
@@ -1426,83 +901,22 @@ Fastest VAD:           WebRTC mode 3 (RTF: 0.003)
 
 ### 11.1 ワークフロー設計
 
-```yaml
-# .github/workflows/benchmark.yml
-name: Benchmark
+**ファイル:** `.github/workflows/benchmark.yml` (Phase C で作成予定)
 
-on:
-  workflow_dispatch:
-    inputs:
-      benchmark_type:
-        description: 'Benchmark type'
-        required: true
-        default: 'both'
-        type: choice
-        options:
-          - asr
-          - vad
-          - both
-      mode:
-        description: 'Execution mode'
-        required: true
-        default: 'quick'
-        type: choice
-        options:
-          - quick
-          - standard
-          - full
-      language:
-        description: 'Target language (empty for all)'
-        required: false
-        default: ''
+**トリガー:** `workflow_dispatch` (手動実行)
 
-jobs:
-  benchmark-gpu:
-    name: GPU Benchmark (Windows RTX 4090)
-    runs-on: [self-hosted, windows]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+**パラメータ:**
+- `benchmark_type`: asr / vad / both
+- `mode`: quick / standard / full
+- `language`: ja / en / (空=全て)
 
-      - name: Setup FFmpeg
-        run: |
-          $ffmpegBinDir = Join-Path $env:GITHUB_WORKSPACE "ffmpeg-bin"
-          # ... (既存の FFmpeg セットアップ)
+**実行環境:** `[self-hosted, windows]` (RTX 4090)
 
-      - name: Setup Python environment
-        run: |
-          uv sync --extra vad --extra engines-torch --extra engines-nemo --extra benchmark
-
-      - name: Run Benchmark
-        env:
-          LIVECAP_FFMPEG_BIN: ${{ github.workspace }}\ffmpeg-bin
-          LIVECAP_DEVICE: cuda
-        run: |
-          $type = "${{ github.event.inputs.benchmark_type }}"
-          $mode = "${{ github.event.inputs.mode }}"
-          $lang = "${{ github.event.inputs.language }}"
-
-          $args = @("--mode", $mode, "--output", "results.json", "--format", "json")
-          if ($lang) { $args += @("--language", $lang) }
-
-          uv run python -m benchmarks --type $type @args
-
-      - name: Generate Report
-        run: |
-          uv run python -m benchmarks.common.reports --input results.json --output report.md
-
-      - name: Upload Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-results-${{ github.run_id }}
-          path: |
-            results.json
-            report.md
-
-      - name: Post Summary
-        run: |
-          Get-Content report.md | Add-Content $env:GITHUB_STEP_SUMMARY
-```
+**処理フロー:**
+1. Checkout → FFmpeg setup → Python environment (`uv sync`)
+2. Benchmark 実行 → `results.json` 出力
+3. Report 生成 → `report.md` 出力
+4. Artifact upload + GitHub Step Summary
 
 ### 11.2 実行モード詳細
 
