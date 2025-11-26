@@ -90,8 +90,31 @@ def normalize_ja(
     return cleaned
 
 
+def _normalize_generic(text: str) -> str:
+    """Generic normalization for languages without specific rules.
+
+    Applies basic normalization:
+    - Lowercase
+    - Remove Unicode punctuation (category P)
+    - Collapse whitespace
+
+    Args:
+        text: Input transcript
+
+    Returns:
+        Normalized text
+    """
+    cleaned = text.lower().strip()
+    # Remove all Unicode punctuation (category P)
+    cleaned = "".join(c for c in cleaned if not unicodedata.category(c).startswith("P"))
+    return _collapse_spaces(cleaned)
+
+
 def normalize_text(text: str, *, lang: str) -> str:
     """Dispatch to language-specific normalization.
+
+    For languages without specific normalization rules, applies generic
+    normalization (lowercase, remove punctuation, collapse whitespace).
 
     Args:
         text: Input transcript
@@ -99,12 +122,10 @@ def normalize_text(text: str, *, lang: str) -> str:
 
     Returns:
         Normalized text
-
-    Raises:
-        ValueError: If language is not supported
     """
     if lang == "en":
         return normalize_en(text)
     if lang == "ja":
         return normalize_ja(text)
-    raise ValueError(f"Unsupported language for normalization: {lang}")
+    # Fallback: generic normalization for other languages (de, fr, es, etc.)
+    return _normalize_generic(text)
