@@ -16,6 +16,8 @@ TESTS_ROOT = ROOT / "tests"
 if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))
 
+import gc
+
 from engines.engine_factory import EngineFactory
 from livecap_core.config.defaults import get_default_config
 from livecap_core.transcription import FileTranscriptionPipeline
@@ -24,6 +26,20 @@ from utils.text_normalization import normalize_text
 pytestmark = pytest.mark.engine_smoke
 
 ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets" / "audio"
+
+
+def _cleanup_gpu_memory() -> None:
+    """Force GPU memory cleanup to prevent VRAM accumulation between tests."""
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+    except ImportError:
+        pass
+
+
 GPU_ENABLED = os.getenv("LIVECAP_ENABLE_GPU_SMOKE") == "1"
 STRICT = os.getenv("LIVECAP_REQUIRE_ENGINE_SMOKE") == "1"
 
@@ -314,6 +330,8 @@ def test_engine_smoke_with_real_audio(case: EngineSmokeCase, tmp_path: Path, cap
         cleanup = getattr(engine, "cleanup", None)
         if callable(cleanup):
             cleanup()
+        # Force GPU memory cleanup to prevent VRAM accumulation between tests
+        _cleanup_gpu_memory()
 
     assert result.success, f"Engine {case.engine} failed: {result.error}"
     transcript = " ".join(segment.text for segment in result.subtitles)

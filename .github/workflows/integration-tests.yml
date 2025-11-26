@@ -368,7 +368,7 @@ jobs:
           warm("parakeet", "cuda", "en")
           warm("parakeet_ja", "cuda", "ja")
           warm("canary", "cuda", "en")
-          # voxtral requires transformers from source (not yet in stable release)
+          warm("voxtral", "cuda", "en")
           PY
 
       - name: Warm engine caches (GPU / self-hosted, Windows)
@@ -431,7 +431,7 @@ jobs:
           warm('parakeet', 'cuda', 'en')
           warm('parakeet_ja', 'cuda', 'ja')
           warm('canary', 'cuda', 'en')
-          # voxtral requires transformers from source (not yet in stable release)
+          warm('voxtral', 'cuda', 'en')
           "@
           
           $script | Out-File warmup.py -Encoding utf8
