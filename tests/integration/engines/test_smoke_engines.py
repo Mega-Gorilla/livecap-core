@@ -308,9 +308,9 @@ def test_engine_smoke_with_real_audio(case: EngineSmokeCase, tmp_path: Path, cap
     except Exception as exc:
         _skip_or_fail(f"Failed to initialise engine {case.engine}: {exc}")
 
-    cache_status = _model_cache_status(engine)
-    if cache_status and not cache_status.cached:
-        _skip_or_fail(f"Model cache missing for {case.engine}: {cache_status.path}")
+    # Note: Cache check removed - some engines (canary, voxtral) use HuggingFace cache
+    # instead of models_dir, so _model_cache_status returns false negatives.
+    # Let load_model() fail naturally if the model is truly unavailable.
 
     pipeline = FileTranscriptionPipeline(config=config)
 
