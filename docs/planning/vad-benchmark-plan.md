@@ -3,7 +3,7 @@
 > **作成日:** 2025-11-25
 > **関連 Issue:** #86
 > **ステータス:** Phase B 実装準備中
-> **最終更新:** 2025-11-26 (Phase B 実装詳細追加)
+> **最終更新:** 2025-11-26 (出力設計確定)
 
 ---
 
@@ -875,25 +875,102 @@ python -m benchmarks --type vad --mode full
 
 ## 10. 出力フォーマット
 
-> **注:** 出力設計の詳細は別途議論中
+### 10.1 出力ディレクトリ構造
 
-### 10.1 出力要件
+**決定事項:** タイムスタンプ付きディレクトリで複数回の実行結果を保持
 
-| 出力 | 形式 | 内容 |
-|------|------|------|
-| **サマリーレポート** | Markdown | エンジン×言語ごとの集約結果、Best/Fastest等 |
-| **生データ** | JSON | 各ファイルの文字起こし結果、教師データ、スコア |
-| **詳細比較** | Markdown | transcript vs reference の並列表示 |
+```
+benchmark_results/
+  {YYYYMMDD_HHMMSS}_{mode}/     # 例: 20250126_143052_quick/
+    summary.md                   # 全体サマリー（Markdown）
+    raw/
+      {engine}_{lang}.csv        # 例: parakeet_ja_ja.csv, whispers2t_large_v3_en.csv
+```
 
-### 10.2 出力項目
+**役割分担:**
+- `summary.md`: 人間が読むレポート（集約結果、Best/Fastest等）
+- `raw/*.csv`: 分析用データ（各ファイルの詳細結果）
 
-**ASR ベンチマーク:**
-- Engine, Language, WER, CER, RTF, VRAM (Model/Peak)
-- Best by language, Fastest, Lowest VRAM
+### 10.2 生データ形式（CSV）
 
-**VAD ベンチマーク:**
-- VAD, ASR, Language, WER, CER, RTF, Segments
-- Best VAD by language, Fastest VAD
+**決定事項:** CSV形式（JSONはデータが膨れがちなため）
+
+**ファイル単位:** エンジン×言語ごとに1ファイル
+
+**CSV構造:**
+```csv
+file_id,reference,transcript,cer,wer,rtf,duration_sec
+JSUT_basic5000_0001,水をマレーシアから買わなければならないのです,水をマレーシアから買わなければならないのです,0.0000,0.0000,0.12,3.45
+JSUT_basic5000_0002,よくよく調べればつまらない話だと思う,よくよく調べれ詰らない話だと思う,0.0526,0.1429,0.15,2.89
+```
+
+**カラム定義:**
+
+| カラム | 説明 |
+|--------|------|
+| `file_id` | ファイル識別子 |
+| `reference` | 教師文字列（正解） |
+| `transcript` | 文字起こし結果 |
+| `cer` | Character Error Rate（正規化後） |
+| `wer` | Word Error Rate（正規化後） |
+| `rtf` | Real-Time Factor |
+| `duration_sec` | 音声の長さ（秒） |
+
+**メリット:**
+- スプレッドシート（Excel等）での分析が容易
+- 外部ツール（diff等）での詳細比較が可能
+- `reference` と `transcript` を並列表示することで比較が可能
+
+### 10.3 サマリーレポート（Markdown）
+
+**内容:**
+- ベンチマーク実行情報（日時、モード、実行回数）
+- エンジン×言語ごとの集約結果テーブル
+- Best by language（最高精度）
+- Fastest（最高速）
+- Lowest VRAM（最小メモリ）
+
+**出力例:**
+```markdown
+# ASR Benchmark Report
+
+**Date:** 2025-01-26 14:30:52
+**Mode:** standard
+**Runs:** 3
+
+## Results by Language
+
+### Japanese (ja)
+
+| Engine | CER | WER | RTF (mean±std) | VRAM |
+|--------|-----|-----|----------------|------|
+| parakeet_ja | 3.2% | 8.1% | 0.12 ± 0.01 | 3584MB |
+| whispers2t_large_v3 | 4.1% | 9.5% | 0.15 ± 0.02 | 1536MB |
+
+**Best CER:** parakeet_ja (3.2%)
+**Fastest:** parakeet_ja (RTF 0.12)
+
+### English (en)
+...
+
+## Summary
+
+- **Total files:** 200
+- **Total duration:** 1234.5 sec
+- **Errors/Skipped:** 2
+```
+
+### 10.4 VAD ベンチマーク出力（Phase C）
+
+VAD ベンチマークでは追加カラムを含む:
+
+```csv
+file_id,vad,asr,reference,transcript,cer,wer,rtf,segments,duration_sec
+```
+
+- `vad`: VAD バックエンド名
+- `asr`: ASR エンジン名
+- `segments`: 検出セグメント数
 
 ---
 
