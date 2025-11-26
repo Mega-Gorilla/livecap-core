@@ -468,31 +468,43 @@ whispers2t    5.1%    12.3%    0.08  3072MB
 
 **ウォームアップ後の期待変動幅:** ±5-10%（専用マシンでは ±2-5%）
 
+#### Warm-up タイミング
+
+**決定事項:** エンジンごとに1回（最初のファイル処理前）
+
+| 方式 | 採用 | 理由 |
+|------|------|------|
+| エンジンごと | ✅ | 高速、GPU状態の安定化に十分 |
+| ファイルごと | ❌ | 時間がかかりすぎる（100ファイル = 100回の warm-up） |
+
 #### 実装例
 
 ```python
-def benchmark_rtf(engine, audio, sample_rate, runs=3):
-    """RTF測定（ウォームアップ + N回測定）"""
-    # ウォームアップ（結果を破棄）
-    engine.transcribe(audio, sample_rate)
+def benchmark_engine(engine, dataset, runs=1):
+    """エンジンのベンチマーク実行"""
+    # エンジンごとに1回の warm-up（最初のファイルで実行）
+    first_file = dataset.files[0]
+    engine.transcribe(first_file.audio, first_file.sample_rate)
 
-    # 本番測定
-    times = []
-    for _ in range(runs):
-        start = time.perf_counter()
-        engine.transcribe(audio, sample_rate)
-        times.append(time.perf_counter() - start)
+    results = []
+    for audio_file in dataset:
+        # RTF測定（runs回実行して平均を取る）
+        times = []
+        for _ in range(runs):
+            start = time.perf_counter()
+            transcript, _ = engine.transcribe(audio_file.audio, audio_file.sample_rate)
+            times.append(time.perf_counter() - start)
 
-    audio_duration = len(audio) / sample_rate
-    rtfs = [t / audio_duration for t in times]
+        mean_time = statistics.mean(times)
+        rtf = mean_time / audio_file.duration
 
-    return {
-        "mean": statistics.mean(rtfs),
-        "std": statistics.stdev(rtfs) if runs > 1 else 0,
-        "min": min(rtfs),
-        "max": max(rtfs),
-        "n_runs": runs,
-    }
+        results.append({
+            "file_id": audio_file.stem,
+            "transcript": transcript,
+            "rtf": rtf,
+        })
+
+    return results
 ```
 
 #### 出力例（複数実行モード）
