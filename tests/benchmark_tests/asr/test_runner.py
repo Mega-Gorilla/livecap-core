@@ -411,3 +411,87 @@ class TestASRBenchmarkRunner:
         # Check CSV exists in raw/ subdirectory
         csv_files = list((result_dir / "raw").glob("*.csv"))
         assert len(csv_files) == 1
+
+    def test_save_results_includes_summary_content(self, tmp_path: Path) -> None:
+        """Test that summary.md contains expected content sections."""
+        config = ASRBenchmarkConfig()
+        runner = ASRBenchmarkRunner(config)
+
+        # Add multiple results for aggregation testing
+        for i, (engine, lang) in enumerate([
+            ("engine_a", "ja"),
+            ("engine_a", "ja"),
+            ("engine_b", "ja"),
+            ("engine_b", "en"),
+        ]):
+            runner.reporter.add_result(BenchmarkResult(
+                engine=engine,
+                language=lang,
+                audio_file=f"test_{i}",
+                transcript="テスト" if lang == "ja" else "test",
+                reference="テスト" if lang == "ja" else "test",
+                wer=0.1 + i * 0.01,
+                cer=0.05 + i * 0.005,
+                rtf=0.3 + i * 0.1,
+                audio_duration_s=1.0,
+                processing_time_s=0.3 + i * 0.1,
+                gpu_memory_peak_mb=1000.0 + i * 100,
+            ))
+
+        result_dir = tmp_path / "results"
+        result_dir.mkdir()
+
+        runner._save_results(result_dir)
+
+        # Check summary.md content
+        summary_content = (result_dir / "summary.md").read_text(encoding="utf-8")
+
+        # Should contain header
+        assert "Benchmark Report" in summary_content or "ASR" in summary_content
+
+        # Should contain engine names
+        assert "engine_a" in summary_content
+        assert "engine_b" in summary_content
+
+    def test_reporter_add_skipped_tracking(self) -> None:
+        """Test that skipped items are tracked correctly."""
+        config = ASRBenchmarkConfig()
+        runner = ASRBenchmarkRunner(config)
+
+        # Add skipped items
+        runner.reporter.add_skipped("engine_x: Not available")
+        runner.reporter.add_skipped("ja: Dataset not found")
+
+        assert len(runner.reporter.skipped) == 2
+        assert "engine_x" in runner.reporter.skipped[0]
+        assert "ja" in runner.reporter.skipped[1]
+
+    def test_reporter_skipped_appears_in_summary(self, tmp_path: Path) -> None:
+        """Test that skipped items appear in summary output."""
+        config = ASRBenchmarkConfig()
+        runner = ASRBenchmarkRunner(config)
+
+        # Add a result and some skipped items
+        runner.reporter.add_result(BenchmarkResult(
+            engine="test_engine",
+            language="ja",
+            audio_file="test",
+            transcript="テスト",
+            reference="テスト",
+            wer=0.0,
+            cer=0.0,
+            rtf=0.5,
+            audio_duration_s=1.0,
+            processing_time_s=0.5,
+        ))
+        runner.reporter.add_skipped("unavailable_engine: ImportError")
+        runner.reporter.add_skipped("zh: No dataset")
+
+        result_dir = tmp_path / "results"
+        result_dir.mkdir()
+
+        runner._save_results(result_dir)
+
+        # Check summary includes skipped section
+        summary_content = (result_dir / "summary.md").read_text(encoding="utf-8")
+        assert "unavailable_engine" in summary_content or "Skipped" in summary_content
