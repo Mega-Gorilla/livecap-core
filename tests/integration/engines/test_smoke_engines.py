@@ -173,7 +173,7 @@ CASES: list[EngineSmokeCase] = [
         audio_stem="librispeech_test-clean_1089-134686-0001_en",
         device="cuda",
         requires_gpu=True,
-        min_vram_gb=16,  # Large model requires more VRAM than 11.6GB Linux GPU
+        # min_vram_gb removed - testing if GPU memory cleanup resolves OOM
     ),
 ]
 
