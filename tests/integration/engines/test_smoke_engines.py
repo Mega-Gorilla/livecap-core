@@ -45,6 +45,7 @@ class EngineSmokeCase:
     audio_stem: str
     device: str | None
     requires_gpu: bool = False
+    min_vram_gb: float | None = None  # Minimum VRAM required in GB
 
 
 @dataclass(frozen=True)
@@ -156,6 +157,7 @@ CASES: list[EngineSmokeCase] = [
         audio_stem="librispeech_test-clean_1089-134686-0001_en",
         device="cuda",
         requires_gpu=True,
+        min_vram_gb=16,  # Large model requires more VRAM than 11.6GB Linux GPU
     ),
 ]
 
@@ -202,6 +204,14 @@ def _guard_gpu(case: EngineSmokeCase) -> None:
             # Allow CPU fallback for ReazonSpeech on GPU runners without CUDA (e.g. Windows CI)
             return
         _skip_or_fail("CUDA is not available on this runner.")
+    # Check VRAM requirement
+    if case.min_vram_gb is not None:
+        total_vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        if total_vram_gb < case.min_vram_gb:
+            _skip_or_fail(
+                f"Insufficient VRAM: {total_vram_gb:.1f}GB available, "
+                f"{case.min_vram_gb}GB required for {case.engine}"
+            )
 
 
 def _build_config(case: EngineSmokeCase) -> dict:
