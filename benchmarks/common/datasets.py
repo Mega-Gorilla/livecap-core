@@ -129,17 +129,53 @@ class Dataset:
     def get_files_for_engine(self, engine_id: str) -> Iterator[AudioFile]:
         """Get files compatible with a specific engine.
 
-        This is a placeholder for future filtering based on engine capabilities.
-        Currently returns all files.
+        Checks if the engine supports this dataset's language. If not,
+        logs a debug message and yields nothing.
 
         Args:
             engine_id: Engine identifier
 
         Yields:
-            AudioFile objects
+            AudioFile objects (if engine supports the language)
         """
-        # TODO: Filter based on engine's supported languages
+        from engines.metadata import EngineMetadata
+
+        info = EngineMetadata.get(engine_id)
+        if info is None:
+            logger.warning(f"Unknown engine: {engine_id}, returning all files")
+            yield from self.files
+            return
+
+        supported_languages = info.supported_languages
+        if supported_languages and self.language not in supported_languages:
+            logger.debug(
+                f"Skipping dataset {self.language}: "
+                f"{engine_id} only supports {supported_languages}"
+            )
+            return
+
         yield from self.files
+
+    def is_compatible_with_engine(self, engine_id: str) -> bool:
+        """Check if this dataset is compatible with an engine.
+
+        Args:
+            engine_id: Engine identifier
+
+        Returns:
+            True if engine supports this dataset's language
+        """
+        from engines.metadata import EngineMetadata
+
+        info = EngineMetadata.get(engine_id)
+        if info is None:
+            return True  # Unknown engine, assume compatible
+
+        supported_languages = info.supported_languages
+        if not supported_languages:
+            return True  # No language restriction
+
+        return self.language in supported_languages
 
 
 class DatasetManager:

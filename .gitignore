@@ -14,3 +14,6 @@ tests/assets/audio/*.flac
 
 # Generated benchmark data
 tests/assets/prepared/
+
+# Benchmark output
+benchmark_results/
