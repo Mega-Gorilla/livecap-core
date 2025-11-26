@@ -602,27 +602,84 @@ whispers2t    5.1%    12.3%    0.08  3072MB
 - 句読点予測精度の比較が可能
 - デバッグ・分析時に有用
 
-### 6.5 統計的厳密性（Phase B 要検討）
+### 6.5 統計的厳密性
 
-**現状:** 単一実行の結果のみを報告
+**ユースケース:** VAD × ASR の組み合わせ比較、結果は公開（論文ほどの厳密性は不要）
 
-**検討事項:**
+#### 決定事項: 2モード制
 
-| レベル | 内容 | 複雑さ | 推奨度 |
-|--------|------|--------|--------|
-| A. 最小限 | 平均・標準偏差 | 低 | ⭐⭐ |
-| B. 標準的 | 平均・標準偏差・95% CI | 中 | ⭐⭐⭐ |
-| C. 厳密 | ブートストラップ + 有意差検定 | 高 | ⭐ |
+| モード | 実行回数 | 用途 | CLI |
+|--------|---------|------|-----|
+| **単一実行** | 1回 | 開発・CI・スクリプトテスト | `--runs 1`（デフォルト） |
+| **複数実行** | 3回 | 公開用ベンチマーク | `--runs 3` |
 
-**議論ポイント:**
-1. **ユースケース**: エンジン比較？回帰検出？論文用？
-2. **計算コスト**: 複数回実行のGPU時間・コスト
-3. **期待される分散**: RTFは安定、WER/CERは入力依存
-4. **必要な厳密性**: 内部評価 vs 外部公開
+#### メトリクス別の測定方法
 
-**暫定方針:**
-- Phase B 初期: 単一実行（現状維持）
-- Phase B 後期: 必要に応じて複数実行 + 統計値追加
+| メトリクス | 測定方法 | 理由 |
+|-----------|---------|------|
+| **RTF** | ウォームアップ1回 + N回測定 | GPU状態による変動を排除 |
+| **WER/CER** | ファイルごとに1回 | 決定的（同じ入力=同じ出力） |
+| **VRAM** | 1回のみ | ほぼ固定値 |
+
+#### RTF の変動要因
+
+| 要因 | 影響度 | 説明 |
+|------|--------|------|
+| GPU ウォームアップ | 高 | 初回推論はCUDAカーネルコンパイルで遅い |
+| GPU サーマルスロットリング | 中 | 温度上昇でクロック低下 |
+| メモリ状態 | 低 | VRAM断片化、キャッシュ状態 |
+
+**ウォームアップ後の期待変動幅:** ±5-10%（専用マシンでは ±2-5%）
+
+#### 実装例
+
+```python
+def benchmark_rtf(engine, audio, sample_rate, runs=3):
+    """RTF測定（ウォームアップ + N回測定）"""
+    # ウォームアップ（結果を破棄）
+    engine.transcribe(audio, sample_rate)
+
+    # 本番測定
+    times = []
+    for _ in range(runs):
+        start = time.perf_counter()
+        engine.transcribe(audio, sample_rate)
+        times.append(time.perf_counter() - start)
+
+    audio_duration = len(audio) / sample_rate
+    rtfs = [t / audio_duration for t in times]
+
+    return {
+        "mean": statistics.mean(rtfs),
+        "std": statistics.stdev(rtfs) if runs > 1 else 0,
+        "min": min(rtfs),
+        "max": max(rtfs),
+        "n_runs": runs,
+    }
+```
+
+#### 出力例（複数実行モード）
+
+```
+=== ASR Benchmark Results (3 runs) ===
+
+--- Japanese ---
+Engine        CER    RTF (mean±std)    VRAM
+-----------  -----  ----------------  ------
+reazonspeech  3.2%   0.15 ± 0.01     2048MB
+parakeet_ja   4.5%   0.12 ± 0.02     3584MB
+whispers2t    5.1%   0.08 ± 0.01     1536MB
+```
+
+#### CLI 使用例
+
+```bash
+# 開発時（高速）
+python -m benchmarks.asr --mode quick
+
+# 公開用（信頼性重視）
+python -m benchmarks.asr --mode standard --runs 3
+```
 
 ### 6.6 既知の制限事項
 
