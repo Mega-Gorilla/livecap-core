@@ -339,25 +339,29 @@ jobs:
           import torch
 
           def warm(engine_type: str, device: str, lang: str) -> None:
-              cfg = get_default_config()
-              transcription = cfg["transcription"]
-              transcription["engine"] = engine_type
-              transcription["input_language"] = lang
-              engine = EngineFactory.create_engine(
-                  engine_type=engine_type,
-                  device=device,
-                  config=cfg,
-              )
-              engine.load_model()
-              models_dir = engine.model_manager.get_models_dir(engine.engine_name)
-              print(f"[{engine_type}/{device}] cached at: {models_dir}")
-              # Cleanup to free VRAM for next engine
-              if hasattr(engine, 'cleanup'):
-                  engine.cleanup()
-              del engine
-              gc.collect()
-              if torch.cuda.is_available():
-                  torch.cuda.empty_cache()
+              try:
+                  cfg = get_default_config()
+                  transcription = cfg["transcription"]
+                  transcription["engine"] = engine_type
+                  transcription["input_language"] = lang
+                  engine = EngineFactory.create_engine(
+                      engine_type=engine_type,
+                      device=device,
+                      config=cfg,
+                  )
+                  engine.load_model()
+                  models_dir = engine.model_manager.get_models_dir(engine.engine_name)
+                  print(f"[{engine_type}/{device}] cached at: {models_dir}")
+                  # Cleanup to free VRAM for next engine
+                  if hasattr(engine, 'cleanup'):
+                      engine.cleanup()
+                  del engine
+              except Exception as e:
+                  print(f"[{engine_type}/{device}] SKIP (warm-up failed): {e}")
+              finally:
+                  gc.collect()
+                  if torch.cuda.is_available():
+                      torch.cuda.empty_cache()
 
           # ReazonSpeech disabled on Linux GPU due to ABI compatibility issues with system libraries
           warm("whispers2t_base", "cuda", "en")
@@ -398,25 +402,29 @@ jobs:
           import torch
 
           def warm(engine_type: str, device: str, lang: str) -> None:
-              cfg = get_default_config()
-              transcription = cfg["transcription"]
-              transcription["engine"] = engine_type
-              transcription["input_language"] = lang
-              engine = EngineFactory.create_engine(
-                  engine_type=engine_type,
-                  device=device,
-                  config=cfg,
-              )
-              engine.load_model()
-              models_dir = engine.model_manager.get_models_dir(engine.engine_name)
-              print(f'[{engine_type}/{device}] cached at: {models_dir}')
-              # Cleanup to free VRAM for next engine
-              if hasattr(engine, 'cleanup'):
-                  engine.cleanup()
-              del engine
-              gc.collect()
-              if torch.cuda.is_available():
-                  torch.cuda.empty_cache()
+              try:
+                  cfg = get_default_config()
+                  transcription = cfg["transcription"]
+                  transcription["engine"] = engine_type
+                  transcription["input_language"] = lang
+                  engine = EngineFactory.create_engine(
+                      engine_type=engine_type,
+                      device=device,
+                      config=cfg,
+                  )
+                  engine.load_model()
+                  models_dir = engine.model_manager.get_models_dir(engine.engine_name)
+                  print(f'[{engine_type}/{device}] cached at: {models_dir}')
+                  # Cleanup to free VRAM for next engine
+                  if hasattr(engine, 'cleanup'):
+                      engine.cleanup()
+                  del engine
+              except Exception as e:
+                  print(f'[{engine_type}/{device}] SKIP (warm-up failed): {e}')
+              finally:
+                  gc.collect()
+                  if torch.cuda.is_available():
+                      torch.cuda.empty_cache()
 
           warm('reazonspeech', 'cuda', 'ja')
           warm('whispers2t_base', 'cuda', 'en')
