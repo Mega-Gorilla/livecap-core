@@ -335,6 +335,9 @@ jobs:
           from engines.engine_factory import EngineFactory
           from livecap_core.config.defaults import get_default_config
 
+          import gc
+          import torch
+
           def warm(engine_type: str, device: str, lang: str) -> None:
               cfg = get_default_config()
               transcription = cfg["transcription"]
@@ -348,6 +351,13 @@ jobs:
               engine.load_model()
               models_dir = engine.model_manager.get_models_dir(engine.engine_name)
               print(f"[{engine_type}/{device}] cached at: {models_dir}")
+              # Cleanup to free VRAM for next engine
+              if hasattr(engine, 'cleanup'):
+                  engine.cleanup()
+              del engine
+              gc.collect()
+              if torch.cuda.is_available():
+                  torch.cuda.empty_cache()
 
           # ReazonSpeech disabled on Linux GPU due to ABI compatibility issues with system libraries
           warm("whispers2t_base", "cuda", "en")
@@ -384,6 +394,8 @@ jobs:
 
           from engines.engine_factory import EngineFactory
           from livecap_core.config.defaults import get_default_config
+          import gc
+          import torch
 
           def warm(engine_type: str, device: str, lang: str) -> None:
               cfg = get_default_config()
@@ -398,6 +410,13 @@ jobs:
               engine.load_model()
               models_dir = engine.model_manager.get_models_dir(engine.engine_name)
               print(f'[{engine_type}/{device}] cached at: {models_dir}')
+              # Cleanup to free VRAM for next engine
+              if hasattr(engine, 'cleanup'):
+                  engine.cleanup()
+              del engine
+              gc.collect()
+              if torch.cuda.is_available():
+                  torch.cuda.empty_cache()
 
           warm('reazonspeech', 'cuda', 'ja')
           warm('whispers2t_base', 'cuda', 'en')
