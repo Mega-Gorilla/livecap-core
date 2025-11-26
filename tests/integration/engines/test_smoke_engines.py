@@ -54,6 +54,9 @@ class ModelCacheStatus:
 
 
 CASES: list[EngineSmokeCase] = [
+    # ==========================================================================
+    # CPU Tests (GitHub-hosted runners)
+    # ==========================================================================
     # ReazonSpeech on CPU is disabled due to sherpa-onnx/onnxruntime ABI issues on hosted runners.
     # See PR #34 for details. It is tested on GPU self-hosted runners instead.
     EngineSmokeCase(
@@ -63,6 +66,9 @@ CASES: list[EngineSmokeCase] = [
         audio_stem="librispeech_test-clean_1089-134686-0001_en",
         device="cpu",
     ),
+    # ==========================================================================
+    # GPU Tests - Japanese Engines (self-hosted runners)
+    # ==========================================================================
     EngineSmokeCase(
         id="reazonspeech_gpu_ja",
         engine="reazonspeech",
@@ -72,7 +78,26 @@ CASES: list[EngineSmokeCase] = [
         requires_gpu=True,
     ),
     EngineSmokeCase(
-        id="whispers2t_gpu_en",
+        id="parakeet_ja_gpu_ja",
+        engine="parakeet_ja",
+        language="ja",
+        audio_stem="jsut_basic5000_0001_ja",
+        device="cuda",
+        requires_gpu=True,
+    ),
+    EngineSmokeCase(
+        id="whispers2t_base_gpu_ja",
+        engine="whispers2t_base",
+        language="ja",
+        audio_stem="jsut_basic5000_0001_ja",
+        device="cuda",
+        requires_gpu=True,
+    ),
+    # ==========================================================================
+    # GPU Tests - English Engines (self-hosted runners)
+    # ==========================================================================
+    EngineSmokeCase(
+        id="whispers2t_base_gpu_en",
         engine="whispers2t_base",
         language="en",
         audio_stem="librispeech_test-clean_1089-134686-0001_en",
@@ -82,6 +107,57 @@ CASES: list[EngineSmokeCase] = [
     EngineSmokeCase(
         id="parakeet_gpu_en",
         engine="parakeet",
+        language="en",
+        audio_stem="librispeech_test-clean_1089-134686-0001_en",
+        device="cuda",
+        requires_gpu=True,
+    ),
+    EngineSmokeCase(
+        id="canary_gpu_en",
+        engine="canary",
+        language="en",
+        audio_stem="librispeech_test-clean_1089-134686-0001_en",
+        device="cuda",
+        requires_gpu=True,
+    ),
+    EngineSmokeCase(
+        id="voxtral_gpu_en",
+        engine="voxtral",
+        language="en",
+        audio_stem="librispeech_test-clean_1089-134686-0001_en",
+        device="cuda",
+        requires_gpu=True,
+    ),
+    # ==========================================================================
+    # GPU Tests - WhisperS2T Variants (self-hosted runners)
+    # ==========================================================================
+    EngineSmokeCase(
+        id="whispers2t_tiny_gpu_en",
+        engine="whispers2t_tiny",
+        language="en",
+        audio_stem="librispeech_test-clean_1089-134686-0001_en",
+        device="cuda",
+        requires_gpu=True,
+    ),
+    EngineSmokeCase(
+        id="whispers2t_small_gpu_en",
+        engine="whispers2t_small",
+        language="en",
+        audio_stem="librispeech_test-clean_1089-134686-0001_en",
+        device="cuda",
+        requires_gpu=True,
+    ),
+    EngineSmokeCase(
+        id="whispers2t_medium_gpu_en",
+        engine="whispers2t_medium",
+        language="en",
+        audio_stem="librispeech_test-clean_1089-134686-0001_en",
+        device="cuda",
+        requires_gpu=True,
+    ),
+    EngineSmokeCase(
+        id="whispers2t_large_v3_gpu_en",
+        engine="whispers2t_large_v3",
         language="en",
         audio_stem="librispeech_test-clean_1089-134686-0001_en",
         device="cuda",

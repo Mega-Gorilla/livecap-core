@@ -352,6 +352,7 @@ jobs:
           # ReazonSpeech disabled on Linux GPU due to ABI compatibility issues with system libraries
           warm("whispers2t_base", "cuda", "en")
           warm("parakeet", "cuda", "en")
+          warm("parakeet_ja", "cuda", "ja")
           PY
 
       - name: Warm engine caches (GPU / self-hosted, Windows)
@@ -399,6 +400,7 @@ jobs:
           warm('reazonspeech', 'cuda', 'ja')
           warm('whispers2t_base', 'cuda', 'en')
           warm('parakeet', 'cuda', 'en')
+          warm('parakeet_ja', 'cuda', 'ja')
           "@
           
           $script | Out-File warmup.py -Encoding utf8
