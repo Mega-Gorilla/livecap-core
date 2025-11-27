@@ -10,18 +10,7 @@ import pytest
 
 from benchmarks.common.progress import EngineProgress, ProgressReporter
 
-
-@pytest.fixture(autouse=True)
-def clean_github_env():
-    """Ensure GitHub Actions environment variables are cleared for all tests.
-
-    This prevents tests from accidentally writing to the real GITHUB_STEP_SUMMARY.
-    """
-    with mock.patch.dict(
-        os.environ,
-        {"GITHUB_ACTIONS": "", "GITHUB_STEP_SUMMARY": ""},
-    ):
-        yield
+# Note: clean_github_env fixture is provided by tests/benchmark_tests/conftest.py
 
 
 class TestProgressReporter:
