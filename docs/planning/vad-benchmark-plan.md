@@ -1285,14 +1285,30 @@ file_id,vad,asr,reference,transcript,cer,wer,rtf,segments,duration_sec
 
 ### 12.1 pyproject.toml 追加
 
+> **Note**: 依存関係の詳細な構成は [セクション 8: 依存関係追加](#依存関係追加) を参照してください。
+> `pyproject.toml` の更新は C-1 実装時に行います。
+
+**採用する構成（モジュラー方式）:**
+
 ```toml
 [project.optional-dependencies]
+# 個別 VAD バックエンド（ユーザーは必要なもののみ選択可能）
+vad = ["silero-vad>=5.1"]           # 既存（暫定デフォルト）
+vad-webrtc = ["webrtcvad>=2.0.10"]  # 軽量、torch 不要
+vad-tenvad = ["ten-vad"]            # 軽量（使用時警告表示）
+vad-javad = ["javad"]               # ベンチマーク用
+
+# 全 VAD バックエンド
+vad-all = [
+    "livecap-core[vad]",
+    "livecap-core[vad-webrtc]",
+    "livecap-core[vad-tenvad]",
+    "livecap-core[vad-javad]",
+]
+
+# ベンチマーク
 benchmark = [
-    # VAD backends
-    "silero-vad>=5.1",
-    "webrtcvad>=2.0.10",
-    "javad",
-    "ten-vad",  # 使用時警告表示
+    "livecap-core[vad-all]",
     # Metrics
     "jiwer>=3.0",
     # Reporting
@@ -1305,6 +1321,12 @@ benchmark = [
     "memory_profiler",
 ]
 ```
+
+**モジュラー方式の利点:**
+- ユーザーは必要な VAD のみインストール可能
+- `webrtcvad` は非常に軽量（C 拡張のみ、ML フレームワーク不要）
+- `[vad]` は Silero のまま（既存互換性維持）
+- ベンチマーク実行時は `[benchmark]` で全 VAD が自動インストール
 
 ### 12.2 既存依存の活用
 
