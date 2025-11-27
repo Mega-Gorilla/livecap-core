@@ -137,6 +137,12 @@ class BenchmarkEngineManager:
         # Build config
         config = self._build_config(engine_id, language)
 
+        # Clear existing engines to ensure accurate VRAM measurement
+        # This prevents VRAM accumulation when measuring model memory
+        if self._cache:
+            logger.debug(f"Clearing {len(self._cache)} cached engines before loading new engine")
+            self._clear_cache_keep_memory()
+
         # Measure GPU memory before/after load
         gpu_tracker = None
         try:
@@ -185,6 +191,54 @@ class BenchmarkEngineManager:
             config["whispers2t"] = {"use_vad": False}
 
         return config
+
+    def unload_engine(
+        self,
+        engine_id: str,
+        device: str = "cuda",
+        language: str = "ja",
+    ) -> bool:
+        """Unload a specific engine and release its GPU memory.
+
+        Args:
+            engine_id: Engine identifier
+            device: Device used
+            language: Language code
+
+        Returns:
+            True if engine was unloaded, False if not found
+        """
+        cache_key = f"{engine_id}_{device}_{language}"
+
+        if cache_key not in self._cache:
+            return False
+
+        engine = self._cache[cache_key]
+        try:
+            cleanup = getattr(engine, "cleanup", None)
+            if callable(cleanup):
+                cleanup()
+            logger.debug(f"Unloaded engine: {cache_key}")
+        except Exception as e:
+            logger.warning(f"Error unloading {cache_key}: {e}")
+
+        del self._cache[cache_key]
+        # Keep model_memory for reporting purposes
+        return True
+
+    def _clear_cache_keep_memory(self) -> None:
+        """Clear engine cache but keep memory measurements for reporting."""
+        for cache_key, engine in self._cache.items():
+            try:
+                cleanup = getattr(engine, "cleanup", None)
+                if callable(cleanup):
+                    cleanup()
+                logger.debug(f"Cleaned up: {cache_key}")
+            except Exception as e:
+                logger.warning(f"Error cleaning up {cache_key}: {e}")
+
+        self._cache.clear()
+        # Note: _model_memory is intentionally kept for reporting
 
     def clear_cache(self) -> None:
         """Clean up and release all cached engines."""
