@@ -28,8 +28,8 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v3
 
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg libc++1
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Prepare ffmpeg-bin directory
         run: |
@@ -42,7 +42,7 @@ jobs:
           fi
 
       - name: Sync dependencies
-        run: uv sync --extra translation --extra dev --extra vad-all
+        run: uv sync --extra translation --extra dev --extra vad
 
       - name: Run tests
         run: uv run python -m pytest tests
