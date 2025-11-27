@@ -305,21 +305,28 @@ else:
 
 **設計決定:** 既存 `livecap_core/vad/` を拡張し、複数バックエンドをサポート
 
-**実装先:** `livecap_core/vad/backends/` (本番コードとして実装)
+**実装先:**
+- 本番用: `livecap_core/vad/backends/`
+- ベンチマーク専用: `benchmarks/vad/backends/`
 
 **設計方針:**
-- 既存 `VADBackend` Protocol を維持（`process()`, `reset()` メソッド）
-- 新規バックエンドは既存 Protocol に準拠
-- JaVAD のみ特殊対応（大きなウィンドウサイズのため Pipeline パターン）
+- `VADBackend` Protocol を拡張（`frame_size`, `name` プロパティ追加）
+- VADProcessor を動的フレームサイズ対応に変更
+- JaVAD はベンチマーク専用（レイテンシ 640ms+ のため）
 
 **バックエンド一覧:**
 
 | バックエンド | Protocol 準拠 | 実装先 | 備考 |
 |-------------|--------------|--------|------|
-| Silero | ✅ | `livecap_core/vad/backends/silero.py` | 既存 |
+| Silero | ✅ | `livecap_core/vad/backends/silero.py` | 既存、暫定デフォルト |
 | WebRTC | ✅ | `livecap_core/vad/backends/webrtc.py` | 新規 |
 | TenVAD | ✅ | `livecap_core/vad/backends/tenvad.py` | 新規、使用時警告 |
-| JaVAD | ❌ (Pipeline) | `livecap_core/vad/backends/javad.py` | 特殊対応 |
+| JaVAD | ❌ | `benchmarks/vad/backends/javad.py` | **ベンチマーク専用** |
+
+**JaVAD がベンチマーク専用の理由:**
+- 最小 640ms のウィンドウサイズ（リアルタイム不適）
+- per-frame probability ではなく segments を返す（Protocol 不適合）
+- ベンチマーク後、価値が明確になれば本番対応を検討
 
 **TenVAD の扱い:**
 - 他の VAD と同様に `livecap_core/vad/backends/` に配置
@@ -837,30 +844,31 @@ python -m benchmarks.vad --mode standard --format markdown
 
 #### C-1: VAD バックエンド実装方針
 
-**設計決定:** 既存の `livecap_core/vad/VADProcessor` を拡張し、複数バックエンドをサポート
+##### 設計決定サマリー
+
+| 項目 | 決定 | 理由 |
+|------|------|------|
+| フレームサイズ | 動的（Protocol に `frame_size` 追加） | 各バックエンドが最適サイズで動作 |
+| JaVAD | ベンチマーク専用 | 640ms+ レイテンシ、Protocol 不適合 |
+| 入力フォーマット | バックエンド内部で変換 | 標準アダプターパターン |
+| 選択 API | コンストラクタ（現行維持） | Pythonic、型安全 |
+| デフォルト VAD | Silero（暫定） | ベンチマーク後に再検討 (#96) |
+
+##### ディレクトリ構造
 
 ```
-既存構造:
-livecap_core/vad/
-├── backends/
-│   ├── __init__.py     # VADBackend Protocol
-│   └── silero.py       # SileroVADBackend
-├── processor.py        # VADProcessor (streaming)
-└── state_machine.py    # VADStateMachine (4-state)
+本番用（livecap_core/vad/backends/）:
+├── __init__.py     # VADBackend Protocol（拡張版）
+├── silero.py       # SileroVADBackend (既存)
+├── webrtc.py       # WebRTCVADBackend (新規)
+└── tenvad.py       # TenVADBackend (新規、使用時警告)
 
-拡張後:
-livecap_core/vad/
-├── backends/
-│   ├── __init__.py     # VADBackend Protocol
-│   ├── silero.py       # SileroVADBackend (既存)
-│   ├── webrtc.py       # WebRTCVADBackend (新規)
-│   ├── javad.py        # JaVADBackend (新規、Pipeline パターン)
-│   └── tenvad.py       # TenVADBackend (新規、使用時警告)
-├── processor.py        # VADProcessor (backend 引数追加)
-└── state_machine.py    # VADStateMachine
+ベンチマーク専用（benchmarks/vad/backends/）:
+└── javad.py        # JaVADPipeline (バッチ処理専用)
 ```
 
-**VADBackend Protocol:**
+##### VADBackend Protocol（拡張版）
+
 ```python
 class VADBackend(Protocol):
     """VAD バックエンドのプロトコル。"""
@@ -869,7 +877,7 @@ class VADBackend(Protocol):
         """音声フレームを処理して発話確率を返す。
 
         Args:
-            audio: 512 samples @ 16kHz (32ms) の音声データ
+            audio: float32 音声データ（長さは frame_size samples）
 
         Returns:
             発話確率 (0.0-1.0)
@@ -879,64 +887,128 @@ class VADBackend(Protocol):
     def reset(self) -> None:
         """内部状態をリセット。"""
         ...
+
+    @property
+    def frame_size(self) -> int:
+        """16kHz での推奨フレームサイズ（samples）"""
+        ...
+
+    @property
+    def name(self) -> str:
+        """バックエンド識別子"""
+        ...
 ```
 
-**フレームサイズ処理:**
+##### VADProcessor の変更
 
-各バックエンドは異なるフレームサイズを要求するため、バックエンド内部で適応処理を行う:
+```python
+class VADProcessor:
+    def __init__(self, backend: VADBackend = None):
+        self._backend = backend or self._create_default_backend()
+        self._frame_size = self._backend.frame_size  # 動的に決定
+```
 
-| Backend | 要求フレームサイズ | 内部処理 |
-|---------|------------------|---------|
-| Silero | 512 samples (32ms) | そのまま使用 |
-| WebRTC | 160/320/480 (10/20/30ms) | 512 → 複数フレーム分割、確率平均 |
-| TenVAD | 160/256 samples | 512 → 複数フレーム分割、確率平均 |
-| JaVAD | 0.64s-3.84s window | **Pipeline API 使用**（下記参照） |
+##### フレームサイズ処理
 
-**JaVAD 特殊対応:**
+| Backend | ネイティブサイズ | VADProcessor 対応 |
+|---------|----------------|------------------|
+| Silero | 512 samples (32ms) | `frame_size=512` |
+| WebRTC | 160/320/480 samples | `frame_size=320` (20ms 推奨) |
+| TenVAD | 160/256 samples | `frame_size=256` (16ms) |
+| JaVAD | 10,240+ samples | **Protocol 非準拠**（下記参照） |
 
-JaVAD は大きなウィンドウサイズ (640ms-3840ms) を要求するため、`VADBackend` Protocol ではなく
-別の Pipeline パターンを使用:
+##### JaVAD: ベンチマーク専用
+
+**理由:**
+1. **アーキテクチャの根本的違い**: JaVAD は per-frame probability ではなく segments を返す
+2. **レイテンシ**: 最小 640ms はリアルタイム用途に不適
+3. **実装コスト**: Protocol 準拠には複雑な変換ロジックが必要、精度低下リスクあり
+4. **ベンチマーク目的**: 真の性能を測定するにはネイティブ API が最適
+
+**将来の検討:**
+ベンチマーク結果で JaVAD の価値が明確になった場合、以下を検討:
+- ファイル処理専用オプションとして提供
+- ストリーミング対応の実装（需要があれば）
 
 ```python
 # benchmarks/vad/backends/javad.py
 class JaVADPipeline:
-    """JaVAD 用パイプライン（バッチ処理向け）。
+    """JaVAD バッチ処理（ベンチマーク専用）
 
-    音声全体を処理してセグメントリストを返す。
+    ⚠️ ストリーミング非対応
+    リアルタイム用途には silero, webrtc, tenvad を使用してください。
     """
 
-    def __init__(self, preset: str = "balanced"):
+    def __init__(self, model: str = "balanced"):
         """
         Args:
-            preset: "tiny" (0.64s), "balanced" (1.92s), "precise" (3.84s)
+            model: "tiny" (640ms), "balanced" (1920ms), "precise" (3840ms)
         """
         ...
 
     def process_audio(self, audio: np.ndarray, sample_rate: int) -> list[tuple[float, float]]:
-        """音声全体を処理してセグメントを返す。
-
-        Returns:
-            List of (start_sec, end_sec) tuples
-        """
-        ...
+        """音声全体を処理してセグメントを返す。"""
+        from javad import Processor
+        processor = Processor(model=self.model)
+        return processor.intervals(audio)
 ```
 
-**TenVAD 警告対応:**
+##### 入力フォーマット変換
 
-TenVAD は独自ライセンス（ライセンス条件限定的）のため、使用時に警告を表示:
+各バックエンドが内部で変換を処理:
+
+```python
+class WebRTCVADBackend:
+    def process(self, audio: np.ndarray) -> float:
+        # float32 [-1, 1] → int16 bytes（WebRTC 要求フォーマット）
+        audio_int16 = (audio * 32767).astype(np.int16)
+        audio_bytes = audio_int16.tobytes()
+        return float(self._vad.is_speech(audio_bytes, 16000))
+
+class TenVADBackend:
+    def process(self, audio: np.ndarray) -> float:
+        # float32 → int16（TenVAD 要求フォーマット）
+        audio_int16 = (audio * 32767).astype(np.int16)
+        prob, flag = self._vad.process(audio_int16)
+        return prob
+```
+
+##### TenVAD 警告対応
 
 ```python
 # livecap_core/vad/backends/tenvad.py
 class TenVADBackend:
     """TenVAD バックエンド。"""
 
-    def __init__(self, ...):
+    def __init__(self, hop_size: int = 256, threshold: float = 0.5):
         logger.warning(
             "TenVAD has limited license terms. "
             "Please review the license before use: "
             "https://github.com/TEN-framework/ten-vad"
         )
         ...
+```
+
+##### デフォルト VAD と自動選択
+
+**現時点:** Silero を暫定デフォルトとして維持（既存互換性）
+
+**将来（Phase C 後）:** 言語に応じた自動選択を実装 → #96 で検討
+
+```python
+# 将来の実装案
+class VADConfig:
+    backend: str = "auto"  # "auto", "silero", "webrtc", "tenvad"
+
+def get_optimal_vad(language: str) -> str:
+    """ベンチマーク結果に基づく最適 VAD を返す"""
+    # Phase C 完了後に実装
+    OPTIMAL_VAD = {
+        "ja": "???",  # ベンチマーク結果で決定
+        "en": "???",
+        "default": "silero",
+    }
+    return OPTIMAL_VAD.get(language, OPTIMAL_VAD["default"])
 ```
 
 #### C-2: セグメント結合戦略
@@ -981,13 +1053,34 @@ def combine_segments(transcripts: list[str], language: str) -> str:
 
 ```toml
 [project.optional-dependencies]
+# 既存（変更なし）
+vad = ["silero-vad>=5.1"]
+
+# 新規: 個別バックエンド
+vad-webrtc = ["webrtcvad>=2.0.10"]  # 軽量、torch 不要
+vad-tenvad = ["ten-vad"]            # 軽量
+vad-javad = ["javad"]               # torch 共有（ベンチマーク用）
+
+# 全バックエンド
+vad-all = [
+    "livecap-core[vad]",
+    "livecap-core[vad-webrtc]",
+    "livecap-core[vad-tenvad]",
+    "livecap-core[vad-javad]",
+]
+
+# ベンチマーク
 benchmark = [
+    "livecap-core[vad-all]",
+    "jiwer>=3.0",
     # ... 既存 ...
-    "webrtcvad>=2.0.10",  # 追加
-    "javad",              # 追加
-    "ten-vad",            # 追加（使用時警告表示）
 ]
 ```
+
+**依存関係の分離理由:**
+- `webrtcvad` は非常に軽量（C 拡張のみ、ML フレームワーク不要）
+- ユーザーは必要なバックエンドのみインストール可能
+- `[vad]` は Silero のまま（既存互換性維持）
 
 ---
 
