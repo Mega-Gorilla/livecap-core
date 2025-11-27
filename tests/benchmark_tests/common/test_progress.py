@@ -157,7 +157,7 @@ class TestProgressReporter:
                 reporter.engine_completed("parakeet_ja", wer=0.15, cer=0.08, rtf=0.05)
 
                 # Read and verify summary content
-                with open(summary_path) as f:
+                with open(summary_path, encoding="utf-8") as f:
                     content = f.read()
 
                 # Header should be present
@@ -167,7 +167,8 @@ class TestProgressReporter:
                 assert "15.0%" in content  # WER
                 assert "0.05x" in content  # RTF
                 assert "100/100" in content  # files
-                assert "✅" in content  # status
+                # Status emoji (✅) - check for presence in UTF-8
+                assert "\u2705" in content or "✅" in content  # status
         finally:
             os.unlink(summary_path)
 
