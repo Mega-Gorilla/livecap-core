@@ -486,16 +486,17 @@ class ReazonSpeechEngine(BaseEngine):
     def cleanup(self) -> None:
         """リソースのクリーンアップ"""
         if self.model is not None:
-            # キャッシュキーを生成
-            metadata = self.get_model_metadata()
-            cache_key = f"reazonspeech_{self.use_int8}_{metadata['name']}"
-            
-            # キャッシュから削除（必要に応じて）
-            # ModelMemoryCache.clear(cache_key)  # 必要な場合のみ
-            
             # メモリを解放
             del self.model
             self.model = None
+
+            # GPUメモリを解放（将来のGPUサポートに備えて）
+            if self.device == "cuda":
+                try:
+                    import torch
+                    torch.cuda.empty_cache()
+                except ImportError:
+                    pass
         self._initialized = False
     
     # === ヘルパーメソッド（リファクタリング） ===
