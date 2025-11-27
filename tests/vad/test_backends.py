@@ -100,6 +100,8 @@ class TestTenVAD:
                 return TenVAD(hop_size=256)
         except ImportError:
             pytest.skip("ten-vad not installed")
+        except OSError as e:
+            pytest.skip(f"ten-vad native library not available: {e}")
 
     def test_frame_size(self, tenvad):
         """フレームサイズ"""
@@ -132,7 +134,10 @@ class TestTenVAD:
 
         import warnings
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            with pytest.raises(ValueError, match="hop_size must be one of"):
-                TenVAD(hop_size=200)
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                with pytest.raises(ValueError, match="hop_size must be one of"):
+                    TenVAD(hop_size=200)
+        except OSError as e:
+            pytest.skip(f"ten-vad native library not available: {e}")

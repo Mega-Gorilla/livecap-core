@@ -28,8 +28,8 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v3
 
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libc++1
 
       - name: Prepare ffmpeg-bin directory
         run: |
