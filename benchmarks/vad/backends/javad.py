@@ -72,7 +72,7 @@ class JaVADPipeline:
         try:
             from javad import Processor
 
-            self._processor = Processor(model=self._model_name)
+            self._processor = Processor(model_name=self._model_name)
             logger.info(
                 f"JaVAD loaded (model={self._model_name}, "
                 f"window={self.WINDOW_SIZES[self._model_name]}ms)"
