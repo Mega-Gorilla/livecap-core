@@ -45,9 +45,9 @@ jobs:
           echo "$PWD/.venv/Scripts" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
           Write-Host "Installing dependencies..."
-          # Install vad-tenvad extra only (javad requires Rust compiler for tokenizers)
-          uv pip install -e ".[vad,vad-webrtc,vad-tenvad]"
-          uv pip install numpy scipy
+          # Install ten-vad directly (livecap-core has whisper-s2t which requires tokenizers/Rust)
+          uv pip install "ten-vad @ git+https://github.com/TEN-framework/ten-vad.git@a64b408d9ff89cd92bd0772ed99f9d58b7a005b1"
+          uv pip install numpy scipy silero-vad webrtcvad
 
           Write-Host "Setup complete"
 
