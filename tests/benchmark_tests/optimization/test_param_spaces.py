@@ -41,16 +41,20 @@ class TestParamSpaces:
         assert "mode" in webrtc_backend
         assert "frame_duration_ms" in webrtc_backend
 
-    def test_silero_includes_threshold(self):
-        """Silero should have threshold in backend params."""
+    def test_silero_threshold_in_vad_config(self):
+        """Silero should have threshold in vad_config (not backend)."""
         silero_backend = PARAM_SPACES["silero"]["backend"]
-        assert "threshold" in silero_backend
+        silero_vad_config = PARAM_SPACES["silero"]["vad_config"]
+        # threshold is in vad_config because state machine uses VADConfig.threshold
+        assert "threshold" not in silero_backend
+        assert "threshold" in silero_vad_config
 
     def test_tenvad_includes_hop_size(self):
         """TenVAD should have hop_size in backend params."""
         tenvad_backend = PARAM_SPACES["tenvad"]["backend"]
         assert "hop_size" in tenvad_backend
-        assert "threshold" in tenvad_backend
+        # NOTE: threshold is in vad_config, NOT backend_params
+        # (state machine uses VADConfig.threshold for detection)
 
 
 class TestSuggestParams:
@@ -63,13 +67,14 @@ class TestSuggestParams:
 
         backend_params, vad_config = suggest_params(trial, "silero")
 
-        # Check backend params
-        assert "threshold" in backend_params
-        assert 0.2 <= backend_params["threshold"] <= 0.8
+        # Check backend params (empty for Silero - threshold moved to vad_config)
+        # Silero backend threshold is NOT used for detection
+        assert "threshold" not in backend_params
 
-        # Check VADConfig
+        # Check VADConfig - threshold IS here (used by state machine)
         assert vad_config is not None
         assert isinstance(vad_config, VADConfig)
+        assert 0.2 <= vad_config.threshold <= 0.8
         assert 100 <= vad_config.min_speech_ms <= 500
         assert 30 <= vad_config.min_silence_ms <= 300
         assert 30 <= vad_config.speech_pad_ms <= 200
@@ -81,15 +86,15 @@ class TestSuggestParams:
 
         backend_params, vad_config = suggest_params(trial, "tenvad")
 
-        # Check backend params
+        # Check backend params (only hop_size, threshold moved to vad_config)
         assert "hop_size" in backend_params
         assert backend_params["hop_size"] in [160, 256]
-        assert "threshold" in backend_params
-        assert 0.2 <= backend_params["threshold"] <= 0.8
+        assert "threshold" not in backend_params  # Moved to vad_config
 
-        # Check VADConfig
+        # Check VADConfig - threshold IS here (used by state machine)
         assert vad_config is not None
         assert isinstance(vad_config, VADConfig)
+        assert 0.2 <= vad_config.threshold <= 0.8
 
     def test_suggest_webrtc_params(self):
         """suggest_params should return valid WebRTC parameters."""
@@ -131,7 +136,8 @@ class TestSuggestParams:
         params1, config1 = suggest_params(trial1, "silero")
         params2, config2 = suggest_params(trial2, "silero")
 
-        assert params1["threshold"] == params2["threshold"]
+        # threshold is in vad_config (not backend_params)
+        assert config1.threshold == config2.threshold
         assert config1.min_speech_ms == config2.min_speech_ms
 
 

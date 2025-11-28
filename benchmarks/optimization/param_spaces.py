@@ -16,12 +16,20 @@ from livecap_core.vad.config import VADConfig
 
 # Parameter space definitions
 # Each VAD has "backend" and "vad_config" sub-dictionaries
+#
+# IMPORTANT: threshold is in vad_config, NOT backend_params!
+# The state machine uses VADConfig.threshold for speech detection
+# (see livecap_core/vad/state_machine.py:114)
+# Backend threshold parameters are NOT used for actual detection.
 PARAM_SPACES: dict[str, dict[str, dict[str, Any]]] = {
     "silero": {
         "backend": {
-            "threshold": {"type": "float", "low": 0.2, "high": 0.8},
+            # Silero backend threshold is NOT used for detection
+            # (kept for compatibility but not optimized)
         },
         "vad_config": {
+            # threshold IS used by state machine for speech detection
+            "threshold": {"type": "float", "low": 0.2, "high": 0.8},
             "neg_threshold": {"type": "float", "low": 0.1, "high": 0.5},
             "min_speech_ms": {"type": "int", "low": 100, "high": 500, "step": 50},
             "min_silence_ms": {"type": "int", "low": 30, "high": 300, "step": 10},
@@ -31,9 +39,11 @@ PARAM_SPACES: dict[str, dict[str, dict[str, Any]]] = {
     "tenvad": {
         "backend": {
             "hop_size": {"type": "categorical", "choices": [160, 256]},
-            "threshold": {"type": "float", "low": 0.2, "high": 0.8},
+            # TenVAD backend threshold is NOT used for detection
         },
         "vad_config": {
+            # threshold IS used by state machine for speech detection
+            "threshold": {"type": "float", "low": 0.2, "high": 0.8},
             "neg_threshold": {"type": "float", "low": 0.1, "high": 0.5},
             "min_speech_ms": {"type": "int", "low": 100, "high": 500, "step": 50},
             "min_silence_ms": {"type": "int", "low": 30, "high": 300, "step": 10},
@@ -45,10 +55,10 @@ PARAM_SPACES: dict[str, dict[str, dict[str, Any]]] = {
             # WebRTC modes: 0=normal, 1=low bitrate, 2=aggressive, 3=very aggressive
             "mode": {"type": "categorical", "choices": [0, 1, 2, 3]},
             "frame_duration_ms": {"type": "categorical", "choices": [10, 20, 30]},
-            # NOTE: threshold is excluded because WebRTC outputs binary (0/1)
         },
         "vad_config": {
-            # threshold is also excluded from vad_config for WebRTC
+            # NOTE: threshold is excluded because WebRTC outputs binary (0/1)
+            # The state machine threshold has no effect on WebRTC detection
             "min_speech_ms": {"type": "int", "low": 100, "high": 500, "step": 50},
             "min_silence_ms": {"type": "int", "low": 30, "high": 300, "step": 10},
             "speech_pad_ms": {"type": "int", "low": 30, "high": 200, "step": 10},
