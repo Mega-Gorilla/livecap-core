@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import pytest
-import optuna
+
+# Skip all tests if optuna is not installed
+optuna = pytest.importorskip("optuna", reason="optuna not installed")
 
 from benchmarks.optimization.param_spaces import (
     PARAM_SPACES,
