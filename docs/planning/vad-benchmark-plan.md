@@ -3,7 +3,7 @@
 > **作成日:** 2025-11-25
 > **関連 Issue:** #86
 > **ステータス:** Phase C 実装準備中
-> **最終更新:** 2025-11-28 (Phase C-2 設計決定: 精度指標, RTF定義, リサンプリング戦略)
+> **最終更新:** 2025-11-28 (Phase C-2 設計決定: speech_ratio, vad_config, レポート拡張)
 
 ---
 
@@ -1089,6 +1089,57 @@ class VADBenchmarkBackend(Protocol):
     def name(self) -> str:
         """バックエンド識別子"""
         ...
+
+    @property
+    def config(self) -> dict:
+        """レポート用の設定パラメータを返す。
+
+        Returns:
+            VAD 固有のパラメータ辞書
+            例: {"mode": 3, "frame_duration_ms": 20}
+        """
+        ...
+```
+
+##### 各バックエンドの config 実装例
+
+```python
+# WebRTC VAD
+class WebRTCVAD:
+    @property
+    def config(self) -> dict:
+        return {
+            "mode": self._mode,
+            "frame_duration_ms": self._frame_duration_ms,
+        }
+
+# TenVAD
+class TenVAD:
+    @property
+    def config(self) -> dict:
+        return {
+            "hop_size": self._hop_size,
+            "threshold": self._threshold,
+        }
+
+# Silero VAD
+class SileroVAD:
+    @property
+    def config(self) -> dict:
+        return {
+            "threshold": self._threshold,
+        }
+
+# JaVAD Pipeline
+class JaVADPipeline:
+    WINDOW_SIZES = {"tiny": 640, "balanced": 1920, "precise": 3840}
+
+    @property
+    def config(self) -> dict:
+        return {
+            "model": self._model,
+            "window_ms": self.WINDOW_SIZES[self._model],
+        }
 ```
 
 ##### VADProcessorWrapper（Protocol準拠 VAD 用）
@@ -1288,18 +1339,32 @@ class BenchmarkResult:
 
     # VAD 拡張フィールド（オプショナル）
     vad: str | None = None                     # VAD バックエンド名
+    vad_config: dict | None = None             # VAD 設定パラメータ（再現性確保用）
     vad_rtf: float | None = None               # VAD 処理の RTF
     segments_count: int | None = None          # 検出セグメント数
     avg_segment_duration_s: float | None = None  # 平均セグメント長（秒）
+    speech_ratio: float | None = None          # 音声区間の割合（診断用）
 ```
 
 **C-2 で追加するフィールド:**
 - `vad_rtf`: VAD 処理速度の評価に必要
 - `segments_count`: セグメント分割数の把握に必要
 - `avg_segment_duration_s`: セグメント粒度の評価に必要
+- `speech_ratio`: VAD の傾向把握に必要（積極的/保守的）
+- `vad_config`: VAD パラメータの記録（再現性・診断能力の確保）
 
-**将来検討（C-2 では見送り）:**
-- `speech_ratio`: 音声区間の割合。計算は可能だが優先度は低い
+**speech_ratio の意義:**
+```
+speech_ratio = sum(segment_durations) / audio_duration
+
+speech_ratio が高い → 積極的に音声検出（False Positive 傾向）
+speech_ratio が低い → 保守的に検出（False Negative 傾向）
+```
+
+**vad_config の意義:**
+- 再現性の確保: パラメータが記録されていれば同じ条件で再実行可能
+- 診断能力の向上: WER が悪い原因を VAD パラメータから推測可能
+- 将来の比較: パラメータ調整実験の際に基準となる
 
 **用途:**
 - `vad=None`: ASR 単体ベンチマーク
@@ -1477,6 +1542,7 @@ def benchmark_file(
         return BenchmarkResult(
             engine=engine_id,
             vad=vad.name,
+            vad_config=vad.config,  # VAD パラメータを記録
             language=audio_file.language,
             audio_file=audio_file.stem,
             transcript="",  # 空文字列
@@ -1487,6 +1553,7 @@ def benchmark_file(
             rtf=0.0,  # ASR 未実行
             segments_count=0,
             avg_segment_duration_s=0.0,
+            speech_ratio=0.0,  # 音声なし
         )
 
     # 各セグメントを ASR で処理（短いセグメントもそのまま）
@@ -1503,12 +1570,25 @@ def benchmark_file(
     # 結果の結合
     full_transcript = combine_segments(transcripts, audio_file.language)
 
+    # セグメント統計を計算
+    total_speech_duration = sum(e - s for s, e in segments)
+    speech_ratio = total_speech_duration / audio_file.duration
+
     return BenchmarkResult(
-        # ...
+        engine=engine_id,
+        vad=vad.name,
+        vad_config=vad.config,  # VAD パラメータを記録
+        language=audio_file.language,
+        audio_file=audio_file.stem,
+        transcript=full_transcript,
+        reference=audio_file.transcript,
+        wer=calculate_wer(audio_file.transcript, full_transcript),
+        cer=calculate_cer(audio_file.transcript, full_transcript),
         vad_rtf=vad_time / audio_file.duration,  # VAD のみ
         rtf=asr_total_time / audio_file.duration,  # ASR のみ
         segments_count=len(segments),
-        avg_segment_duration_s=sum(e - s for s, e in segments) / len(segments),
+        avg_segment_duration_s=total_speech_duration / len(segments),
+        speech_ratio=speech_ratio,  # 音声区間の割合
     )
 ```
 
@@ -1516,6 +1596,8 @@ def benchmark_file(
 - **空セグメント**: 無音ファイルは存在し得る。WER/CER で「全削除」として評価
 - **短セグメント**: フィルタすると VAD の問題を隠蔽。VAD 設定（`min_speech_ms` 等）で調整すべき
 - **RTF 分離**: VAD と ASR のボトルネック特定が容易
+- **speech_ratio**: VAD の傾向（積極的/保守的）を定量化
+- **vad_config**: 再現性と診断能力の確保
 
 #### C-7: Quick Mode データソース
 
@@ -1730,15 +1812,65 @@ JSUT_basic5000_0002,よくよく調べればつまらない話だと思う,よ�
 
 ### 10.4 VAD ベンチマーク出力（Phase C）
 
+#### CSV 構造
+
 VAD ベンチマークでは追加カラムを含む:
 
 ```csv
-file_id,vad,asr,reference,transcript,cer,wer,rtf,segments,duration_sec
+file_id,vad,asr,reference,transcript,cer,wer,rtf,vad_rtf,segments_count,speech_ratio,duration_sec
 ```
 
-- `vad`: VAD バックエンド名
-- `asr`: ASR エンジン名
-- `segments`: 検出セグメント数
+| カラム | 説明 |
+|--------|------|
+| `vad` | VAD バックエンド名 |
+| `asr` | ASR エンジン名 |
+| `vad_rtf` | VAD 処理の Real-Time Factor |
+| `segments_count` | 検出セグメント数 |
+| `speech_ratio` | 音声区間の割合（0.0-1.0） |
+
+#### サマリーレポートの VAD 設定テーブル
+
+**再現性と診断能力の確保のため、VAD の設定パラメータをレポートに含める。**
+
+```markdown
+# VAD Benchmark Report
+
+**Date:** 2025-01-28 14:30:52
+**Mode:** standard
+
+## VAD Configurations
+
+| ID | Backend | Parameters |
+|----|---------|------------|
+| silero | SileroVAD | threshold=0.5 |
+| webrtc_mode0 | WebRTCVAD | mode=0, frame_duration_ms=20 |
+| webrtc_mode1 | WebRTCVAD | mode=1, frame_duration_ms=20 |
+| webrtc_mode2 | WebRTCVAD | mode=2, frame_duration_ms=20 |
+| webrtc_mode3 | WebRTCVAD | mode=3, frame_duration_ms=20 |
+| tenvad | TenVAD | hop_size=256, threshold=0.5 |
+| javad_tiny | JaVADPipeline | model=tiny, window_ms=640 |
+| javad_balanced | JaVADPipeline | model=balanced, window_ms=1920 |
+| javad_precise | JaVADPipeline | model=precise, window_ms=3840 |
+
+## Results by Language
+
+### Japanese (ja)
+
+| VAD | ASR | CER | WER | RTF | VAD RTF | Segments | Speech Ratio |
+|-----|-----|-----|-----|-----|---------|----------|--------------|
+| silero | parakeet_ja | 3.2% | 8.1% | 0.12 | 0.02 | 45 | 0.72 |
+| webrtc_mode3 | parakeet_ja | 4.5% | 9.8% | 0.12 | 0.01 | 52 | 0.68 |
+| javad_precise | parakeet_ja | 3.0% | 7.9% | 0.12 | 0.05 | 38 | 0.75 |
+
+**Best CER:** javad_precise + parakeet_ja (3.0%)
+**Fastest VAD:** webrtc_mode3 (VAD RTF 0.01)
+**Highest Speech Ratio:** javad_precise (0.75)
+```
+
+**パラメータテーブルの意義:**
+1. **再現性**: 同じパラメータで再実行可能
+2. **診断**: WER 差異の原因を推測可能（例: mode 0 vs mode 3）
+3. **比較**: パラメータ変更時の影響を追跡可能
 
 ---
 
