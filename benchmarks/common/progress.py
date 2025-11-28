@@ -145,13 +145,15 @@ class ProgressReporter:
         """Emit GitHub Actions notice annotation."""
         if self._is_github_actions:
             # GitHub Actions workflow command
-            print(f"::notice::{message}")
+            # flush=True ensures immediate output (avoids buffering issues)
+            print(f"::notice::{message}", flush=True)
         logger.info(message)
 
     def _emit_warning(self, message: str) -> None:
         """Emit GitHub Actions warning annotation."""
         if self._is_github_actions:
-            print(f"::warning::{message}")
+            # flush=True ensures immediate output (avoids buffering issues)
+            print(f"::warning::{message}", flush=True)
         logger.warning(message)
 
     def _format_time(self, seconds: float) -> str:
@@ -234,6 +236,7 @@ class ProgressReporter:
         vad_rtf: float | None = None,
         segments_count: int | None = None,
         speech_ratio: float | None = None,
+        emit_annotation: bool = True,
     ) -> None:
         """Called when an engine benchmark completes.
 
@@ -245,6 +248,7 @@ class ProgressReporter:
             vad_rtf: VAD Real-Time Factor (VAD benchmark only)
             segments_count: Number of detected segments (VAD benchmark only)
             speech_ratio: Speech ratio 0.0-1.0 (VAD benchmark only)
+            emit_annotation: If True, emit GitHub annotation (default True)
         """
         elapsed = time.time() - self._engine_start_time
         self._progress.engines_completed += 1
@@ -282,7 +286,13 @@ class ProgressReporter:
                 f"[{idx}/{self._total_engines}] [OK] {engine_id} completed - "
                 f"WER: {wer_str}, RTF: {rtf_str}, Time: {time_str}{remaining_str}"
             )
-        self._emit_notice(message)
+
+        # Emit annotation only if requested (ASR benchmark always, VAD benchmark at VAD level)
+        if emit_annotation:
+            self._emit_notice(message)
+        else:
+            # Log only, no annotation
+            logger.info(message)
 
         # GitHub Step Summary row
         if self._is_github_actions and self._current_engine:
@@ -392,3 +402,54 @@ class ProgressReporter:
         if self._is_github_actions:
             footer = f"\n**Total time:** {self._format_time(total_elapsed)}\n"
             self._write_step_summary(footer)
+
+    # =========================================================================
+    # VAD-level notifications (for VAD benchmark only)
+    # =========================================================================
+
+    def vad_started(self, vad_id: str, engines_count: int) -> None:
+        """Called when VAD evaluation starts (all engines with this VAD).
+
+        Args:
+            vad_id: VAD identifier
+            engines_count: Number of engines to evaluate with this VAD
+        """
+        message = f"Starting VAD evaluation: {vad_id} ({engines_count} engines)"
+        logger.info(message)
+
+    def vad_completed(
+        self,
+        vad_id: str,
+        engines_succeeded: int,
+        engines_failed: int,
+        avg_wer: float | None = None,
+        avg_rtf: float | None = None,
+        elapsed_s: float = 0.0,
+    ) -> None:
+        """Called when VAD evaluation completes (all engines with this VAD).
+
+        Emits a GitHub annotation summarizing the VAD's performance across all engines.
+
+        Args:
+            vad_id: VAD identifier
+            engines_succeeded: Number of engines that completed successfully
+            engines_failed: Number of engines that failed
+            avg_wer: Average WER across all engines (0.0-1.0)
+            avg_rtf: Average RTF across all engines
+            elapsed_s: Total elapsed time for this VAD
+        """
+        total_engines = engines_succeeded + engines_failed
+        wer_str = f"{avg_wer:.1%}" if avg_wer is not None else "-"
+        rtf_str = f"{avg_rtf:.2f}x" if avg_rtf is not None else "-"
+        time_str = self._format_time(elapsed_s)
+
+        if engines_failed > 0:
+            status = f"{engines_succeeded}/{total_engines} OK"
+        else:
+            status = "All OK"
+
+        message = (
+            f"[VAD] {vad_id} completed - "
+            f"Engines: {status}, Avg WER: {wer_str}, Avg RTF: {rtf_str}, Time: {time_str}"
+        )
+        self._emit_notice(message)

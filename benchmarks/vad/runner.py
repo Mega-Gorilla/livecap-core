@@ -225,7 +225,10 @@ class VADBenchmarkRunner:
         return result_dir, success_count, failure_count
 
     def _benchmark_language(self, language: str) -> None:
-        """Benchmark all engines × VADs for a language.
+        """Benchmark all VADs × engines for a language.
+
+        Loop order: VAD (outer) -> engine (inner)
+        This allows VAD-level progress notifications.
 
         Args:
             language: Language code
@@ -255,33 +258,97 @@ class VADBenchmarkRunner:
         engines = self.config.get_engines_for_language(language)
         vads = self.config.get_vads()
 
+        # Loop order: VAD (outer) -> engine (inner)
+        # This allows VAD-level annotations instead of engine×VAD annotations
+        for vad_id in vads:
+            self._benchmark_vad(vad_id, engines, dataset)
+
+    def _benchmark_vad(
+        self,
+        vad_id: str,
+        engines: list[str],
+        dataset: Dataset,
+    ) -> None:
+        """Benchmark a single VAD with all engines.
+
+        This method handles VAD-level progress notifications.
+
+        Args:
+            vad_id: VAD identifier
+            engines: List of engine IDs to benchmark
+            dataset: Dataset to benchmark
+        """
+        vad_start_time = time.time()
+        vad_succeeded = 0
+        vad_failed = 0
+        vad_results: list[BenchmarkResult] = []
+
+        # Notify VAD start
+        if self.progress:
+            self.progress.vad_started(vad_id, len(engines))
+
+        # Benchmark each engine with this VAD
         for engine_id in engines:
             # Check engine compatibility
             if not dataset.is_compatible_with_engine(engine_id):
-                for vad_id in vads:
-                    reason = f"Does not support {language}"
-                    logger.debug(f"{engine_id}+{vad_id}: {reason}")
-                    self.reporter.add_skipped(f"{engine_id}+{vad_id}: {reason}")
-                    if self.progress:
-                        self.progress.engine_skipped(engine_id, reason, vad_name=vad_id)
+                reason = f"Does not support {dataset.language}"
+                logger.debug(f"{engine_id}+{vad_id}: {reason}")
+                self.reporter.add_skipped(f"{engine_id}+{vad_id}: {reason}")
+                if self.progress:
+                    self.progress.engine_skipped(engine_id, reason, vad_name=vad_id)
+                vad_failed += 1
                 continue
 
-            # Benchmark this engine with each VAD
-            for vad_id in vads:
-                self._benchmark_engine_vad(engine_id, vad_id, dataset)
+            # Run benchmark and collect results
+            results = self._benchmark_engine_vad(engine_id, vad_id, dataset)
+            if results:
+                vad_succeeded += 1
+                vad_results.extend(results)
+            else:
+                vad_failed += 1
+
+        # Calculate VAD-level averages
+        vad_elapsed = time.time() - vad_start_time
+        avg_wer = None
+        avg_rtf = None
+
+        if vad_results:
+            wer_values = [r.wer for r in vad_results if r.wer is not None]
+            rtf_values = [r.rtf for r in vad_results if r.rtf is not None]
+            if wer_values:
+                avg_wer = mean(wer_values)
+            if rtf_values:
+                avg_rtf = mean(rtf_values)
+
+        # Notify VAD completion (this emits the annotation)
+        if self.progress:
+            self.progress.vad_completed(
+                vad_id,
+                engines_succeeded=vad_succeeded,
+                engines_failed=vad_failed,
+                avg_wer=avg_wer,
+                avg_rtf=avg_rtf,
+                elapsed_s=vad_elapsed,
+            )
+
+        # Clear engine cache to free GPU memory before next VAD
+        self.engine_manager.clear_cache()
 
     def _benchmark_engine_vad(
         self,
         engine_id: str,
         vad_id: str,
         dataset: Dataset,
-    ) -> None:
+    ) -> list[BenchmarkResult] | None:
         """Benchmark a single engine + VAD combination.
 
         Args:
             engine_id: Engine identifier
             vad_id: VAD identifier
             dataset: Dataset to benchmark
+
+        Returns:
+            List of benchmark results, or None if the combination failed
         """
         logger.info(f"  Benchmarking: {engine_id} + {vad_id}")
 
@@ -293,7 +360,7 @@ class VADBenchmarkRunner:
             self.reporter.add_skipped(f"{engine_id}+{vad_id}: {reason}")
             if self.progress:
                 self.progress.engine_skipped(engine_id, reason, vad_name=vad_id)
-            return
+            return None
 
         # Report start
         if self.progress:
@@ -315,7 +382,7 @@ class VADBenchmarkRunner:
             self._failure_count += 1
             if self.progress:
                 self.progress.engine_failed(engine_id, reason, vad_name=vad_id)
-            return
+            return None
 
         # Create VAD
         try:
@@ -328,7 +395,7 @@ class VADBenchmarkRunner:
             self._failure_count += 1
             if self.progress:
                 self.progress.engine_failed(engine_id, reason, vad_name=vad_id)
-            return
+            return None
 
         # Get GPU memory after model load
         gpu_memory_model = self.engine_manager.get_model_memory(
@@ -353,7 +420,7 @@ class VADBenchmarkRunner:
             self._failure_count += 1
             if self.progress:
                 self.progress.engine_failed(engine_id, reason, vad_name=vad_id)
-            return
+            return None
 
         # Reset GPU peak memory for inference measurement
         if self.gpu_tracker.available:
@@ -392,7 +459,7 @@ class VADBenchmarkRunner:
         for audio_file in files:
             audio_file.unload()
 
-        # Report completion
+        # Report completion (no annotation - VAD-level annotation will be emitted later)
         if run_results:
             # Combination completed with results → success
             self._success_count += 1
@@ -405,6 +472,7 @@ class VADBenchmarkRunner:
             avg_speech_ratio = mean(r.speech_ratio for r in run_results if r.speech_ratio is not None)
 
             if self.progress:
+                # emit_annotation=False: VAD-level annotation is emitted in _benchmark_vad
                 self.progress.engine_completed(
                     engine_id,
                     wer=avg_wer,
@@ -413,13 +481,16 @@ class VADBenchmarkRunner:
                     vad_rtf=avg_vad_rtf,
                     segments_count=avg_segments,
                     speech_ratio=avg_speech_ratio,
+                    emit_annotation=False,
                 )
+            return run_results
         else:
             # Combination completed but no results (all files failed)
             # This is a partial failure - the combination ran but produced nothing
             self._failure_count += 1
             if self.progress:
-                self.progress.engine_completed(engine_id)
+                self.progress.engine_completed(engine_id, emit_annotation=False)
+            return None
 
     def _benchmark_file(
         self,
