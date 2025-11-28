@@ -3,7 +3,7 @@
 > **作成日:** 2025-11-25
 > **関連 Issue:** #86
 > **ステータス:** Phase C 実装準備中
-> **最終更新:** 2025-11-28 (Phase C-2 設計決定)
+> **最終更新:** 2025-11-28 (Phase C-2 設計決定: Factory, 空セグメント処理, RTF測定)
 
 ---
 
@@ -833,8 +833,8 @@ python -m benchmarks.asr --mode standard --runs 3 --output results.json
 | タスク | PR | 内容 | ステータス |
 |--------|-----|------|----------|
 | C-1 | #110, #114 | VAD バックエンド実装（Section 5.2 参照） | ✅ 完了 |
-| C-2 | - | `VADBenchmarkRunner` 実装 | 🔜 次 |
-| C-3 | - | CI ワークフロー更新 (`vad-benchmark.yml`) | 📋 待機 |
+| C-2 | - | `VADBenchmarkRunner` 実装（C-2～C-7 セクション参照） | 🔜 次 |
+| C-3 | - | CI ワークフロー作成 (`vad-benchmark.yml`) | 📋 待機 |
 
 **CLI 使用例:**
 ```bash
@@ -1297,6 +1297,161 @@ class ProgressReporter:
 1. **コード再利用**: 進捗表示、Step Summary、ETA計算のロジックを継承
 2. **一貫性**: ASR/VAD 両方で同じ見た目のレポート
 3. **シンプル**: 新クラス作成より変更量が少ない
+
+**進捗表示フォーマット（VAD ベンチマーク時）:**
+```
+[1/9] silero + parakeet_ja (ja): Processing 100 files...
+      ████████████████████░░░░ 80/100 files (2m 15s remaining)
+```
+
+VAD名 + ASR名 の組み合わせで表示し、何を評価中か明確にする。
+
+#### C-5: VAD Factory 設計
+
+**決定:** ハイブリッド方式（Registry + Factory、キャッシュなし）
+
+```python
+# benchmarks/vad/factory.py
+
+# Registry: VAD 構成の定義
+VAD_REGISTRY: dict[str, dict] = {
+    # Protocol準拠 VAD (VADProcessorWrapper で使用)
+    "silero": {"type": "protocol", "backend_class": "SileroVAD", "params": {}},
+    "webrtc_mode0": {"type": "protocol", "backend_class": "WebRTCVAD", "params": {"mode": 0}},
+    "webrtc_mode1": {"type": "protocol", "backend_class": "WebRTCVAD", "params": {"mode": 1}},
+    "webrtc_mode2": {"type": "protocol", "backend_class": "WebRTCVAD", "params": {"mode": 2}},
+    "webrtc_mode3": {"type": "protocol", "backend_class": "WebRTCVAD", "params": {"mode": 3}},
+    "tenvad": {"type": "protocol", "backend_class": "TenVAD", "params": {}},
+    # JaVAD (直接 process_audio を持つ)
+    "javad_tiny": {"type": "javad", "model": "tiny"},
+    "javad_balanced": {"type": "javad", "model": "balanced"},
+    "javad_precise": {"type": "javad", "model": "precise"},
+}
+
+def create_vad(vad_id: str) -> VADBenchmarkBackend:
+    """VAD バックエンドを生成する。
+
+    毎回新しいインスタンスを生成（キャッシュなし）。
+
+    Args:
+        vad_id: VAD 識別子（VAD_REGISTRY のキー）
+
+    Returns:
+        VADBenchmarkBackend を実装するインスタンス
+
+    Raises:
+        ValueError: 不明な vad_id
+    """
+    if vad_id not in VAD_REGISTRY:
+        raise ValueError(f"Unknown VAD: {vad_id}. Available: {list(VAD_REGISTRY.keys())}")
+
+    config = VAD_REGISTRY[vad_id]
+
+    if config["type"] == "javad":
+        from benchmarks.vad.backends.javad import JaVADPipeline
+        return JaVADPipeline(model=config["model"])
+    else:
+        # Protocol準拠 VAD
+        backend = _create_protocol_backend(config)
+        return VADProcessorWrapper(backend)
+
+def get_all_vad_ids() -> list[str]:
+    """利用可能な全 VAD ID を返す。"""
+    return list(VAD_REGISTRY.keys())
+```
+
+**キャッシュなしの理由:**
+1. **状態汚染の回避**: `reset()` があるが、完全なクリーンスレートが望ましい
+2. **メモリ管理の簡素化**: VAD は軽量、毎回生成しても問題なし
+3. **テスト容易性**: 各テストで独立したインスタンス
+4. **ASR エンジンとの違い**: ASR は重量級（数GB）、VAD は軽量（数MB）
+
+#### C-6: 空セグメント・短セグメントの処理
+
+**決定:**
+- **0 セグメント → 空文字列の transcript**: エラーではなく正常なケース
+- **短いセグメントはフィルタなし**: VAD の判断をそのまま採用
+
+```python
+def benchmark_file(
+    self,
+    vad: VADBenchmarkBackend,
+    engine: TranscriptionEngine,
+    audio_file: AudioFile,
+) -> BenchmarkResult:
+    """1ファイルの VAD + ASR ベンチマーク。"""
+
+    # VAD 処理
+    vad_start = time.perf_counter()
+    segments = vad.process_audio(audio_file.audio, audio_file.sample_rate)
+    vad_time = time.perf_counter() - vad_start
+
+    # 空セグメントの場合
+    if not segments:
+        return BenchmarkResult(
+            engine=engine_id,
+            vad=vad.name,
+            language=audio_file.language,
+            audio_file=audio_file.stem,
+            transcript="",  # 空文字列
+            reference=audio_file.transcript,
+            wer=calculate_wer(audio_file.transcript, ""),  # 参照との比較
+            cer=calculate_cer(audio_file.transcript, ""),
+            vad_rtf=vad_time / audio_file.duration,
+            rtf=0.0,  # ASR 未実行
+            segments_count=0,
+            avg_segment_duration_s=0.0,
+        )
+
+    # 各セグメントを ASR で処理（短いセグメントもそのまま）
+    transcripts = []
+    asr_total_time = 0.0
+
+    for start, end in segments:
+        segment_audio = extract_segment(audio_file.audio, start, end, audio_file.sample_rate)
+        asr_start = time.perf_counter()
+        transcript, _ = engine.transcribe(segment_audio, audio_file.sample_rate)
+        asr_total_time += time.perf_counter() - asr_start
+        transcripts.append(transcript)
+
+    # 結果の結合
+    full_transcript = combine_segments(transcripts, audio_file.language)
+
+    return BenchmarkResult(
+        # ...
+        vad_rtf=vad_time / audio_file.duration,  # VAD のみ
+        rtf=asr_total_time / audio_file.duration,  # ASR のみ
+        segments_count=len(segments),
+        avg_segment_duration_s=sum(e - s for s, e in segments) / len(segments),
+    )
+```
+
+**設計理由:**
+- **空セグメント**: 無音ファイルは存在し得る。WER/CER で「全削除」として評価
+- **短セグメント**: フィルタすると VAD の問題を隠蔽。VAD 設定（`min_speech_ms` 等）で調整すべき
+- **RTF 分離**: VAD と ASR のボトルネック特定が容易
+
+#### C-7: Quick Mode データソース
+
+**決定:** 既存の DatasetManager をそのまま使用
+
+```python
+# benchmarks/vad/runner.py
+class VADBenchmarkRunner:
+    def __init__(self, config: VADBenchmarkConfig):
+        self.dataset_manager = DatasetManager()  # 既存を再利用
+
+    def _benchmark_language(self, language: str) -> None:
+        # mode に応じて適切なデータセットを取得
+        dataset = self.dataset_manager.get_dataset(language, mode=self.config.mode)
+        # quick → tests/assets/audio/{lang}/
+        # standard/full → tests/assets/prepared/{lang}/
+```
+
+**理由:**
+- ASR ベンチマークと同じデータソースを使用することで一貫性を確保
+- DatasetManager は mode に応じてパスを切り替える機能を既に持っている
+- 新規実装不要
 
 #### 依存関係追加
 
