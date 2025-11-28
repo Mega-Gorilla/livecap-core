@@ -463,8 +463,11 @@ VAD が悪い → 音声の切り落とし/ノイズ混入 → ASR 精度が低�
 ```
 
 **将来の拡張（必要に応じて）:**
+- AVA-Speech 等のラベル付きデータセットによる直接評価（Precision, Recall, F1）
 - 基準 VAD（例: Silero）との交差比較（IoU, Segment Agreement Rate）
 - 手動アノテーションによるサブセット評価
+
+> 📝 詳細は Issue #86 の調査メモ「VAD 評価手法の調査メモ」を参照
 
 ### 6.4 Raw vs Normalized メトリクス（Phase B 実装予定）
 
@@ -1999,6 +2002,23 @@ benchmark = [
 
 - de, fr, es などの追加言語
 - 言語検出精度の評価
+
+### 14.4 VAD 直接評価
+
+ラベル付きデータセットを使用した VAD 単体の精度評価:
+
+| データセット | 特徴 | メトリクス |
+|-------------|------|-----------|
+| [AVA-Speech](https://arxiv.org/abs/1808.00606) | 映画音声、3種ラベル | Precision, Recall, F1 |
+| [LibriParty](https://huggingface.co/speechbrain/vad-crdnn-libriparty) | 重複発話シミュレーション | ROC-AUC |
+
+**実装案:**
+```bash
+# AVA-Speech による直接評価
+python -m benchmarks.vad --mode direct --dataset ava-speech
+```
+
+> 📝 詳細は Issue #86 の調査メモ「VAD 評価手法の調査メモ」Option A を参照
 
 ---
 
