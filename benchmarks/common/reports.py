@@ -47,13 +47,17 @@ class BenchmarkResult:
     gpu_memory_model_mb: float | None = None
     gpu_memory_peak_mb: float | None = None
 
-    # Optional VAD info
+    # VAD info (for VAD benchmark)
     vad: str | None = None
-    segments: int | None = None
+    vad_config: dict | None = None  # VAD parameters for reproducibility
+    vad_rtf: float | None = None  # VAD processing RTF
+    segments_count: int | None = None  # Number of detected segments
+    avg_segment_duration_s: float | None = None  # Average segment duration
+    speech_ratio: float | None = None  # Speech ratio (0.0-1.0)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return {
+        result = {
             "engine": self.engine,
             "language": self.language,
             "audio_file": self.audio_file,
@@ -69,9 +73,20 @@ class BenchmarkResult:
                 "gpu_memory_model_mb": self.gpu_memory_model_mb,
                 "gpu_memory_peak_mb": self.gpu_memory_peak_mb,
             },
-            "vad": self.vad,
-            "segments": self.segments,
         }
+
+        # Add VAD info if present
+        if self.vad is not None:
+            result["vad"] = {
+                "name": self.vad,
+                "config": self.vad_config,
+                "vad_rtf": self.vad_rtf,
+                "segments_count": self.segments_count,
+                "avg_segment_duration_s": self.avg_segment_duration_s,
+                "speech_ratio": self.speech_ratio,
+            }
+
+        return result
 
 
 @dataclass
