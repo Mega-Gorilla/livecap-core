@@ -37,6 +37,11 @@ from benchmarks.common import (
 )
 from benchmarks.vad.backends import VADBenchmarkBackend
 from benchmarks.vad.factory import create_vad, get_all_vad_ids, get_vad_config
+from benchmarks.vad.preset_integration import (
+    create_vad_with_preset,
+    get_preset_vad_ids,
+    get_preset_config,
+)
 
 __all__ = ["VADBenchmarkRunner", "VADBenchmarkConfig"]
 
@@ -68,6 +73,11 @@ class VADBenchmarkConfig:
     # Target VADs (None = use mode defaults)
     vads: list[str] | None = None
 
+    # Parameter source: "default" or "preset"
+    # - "default": Use hardcoded default parameters from factory.py
+    # - "preset": Load optimized parameters from livecap_core/vad/presets.py
+    param_source: str = "default"
+
     # Number of runs per file for RTF measurement
     runs: int = 1
 
@@ -98,11 +108,19 @@ class VADBenchmarkConfig:
     def get_vads(self) -> list[str]:
         """Get VADs to benchmark.
 
+        When param_source is "preset", only returns VADs that have optimized
+        presets (silero, tenvad, webrtc). Mode variants like webrtc_mode0 are
+        not used because the preset specifies the optimal mode.
+
         Returns:
             List of VAD IDs
         """
         if self.vads:
             return self.vads
+
+        # Preset mode: use base VAD types only (no mode variants)
+        if self.param_source == "preset":
+            return get_preset_vad_ids()
 
         if self.mode in ("debug", "quick", "standard"):
             return DEFAULT_MODE_VADS
@@ -261,13 +279,14 @@ class VADBenchmarkRunner:
         # Loop order: VAD (outer) -> engine (inner)
         # This allows VAD-level annotations instead of engine×VAD annotations
         for vad_id in vads:
-            self._benchmark_vad(vad_id, engines, dataset)
+            self._benchmark_vad(vad_id, engines, dataset, language)
 
     def _benchmark_vad(
         self,
         vad_id: str,
         engines: list[str],
         dataset: Dataset,
+        language: str,
     ) -> None:
         """Benchmark a single VAD with all engines.
 
@@ -277,6 +296,7 @@ class VADBenchmarkRunner:
             vad_id: VAD identifier
             engines: List of engine IDs to benchmark
             dataset: Dataset to benchmark
+            language: Language code (for preset loading)
         """
         vad_start_time = time.time()
         vad_succeeded = 0
@@ -300,7 +320,7 @@ class VADBenchmarkRunner:
                 continue
 
             # Run benchmark and collect results
-            results = self._benchmark_engine_vad(engine_id, vad_id, dataset)
+            results = self._benchmark_engine_vad(engine_id, vad_id, dataset, language)
             if results:
                 vad_succeeded += 1
                 vad_results.extend(results)
@@ -339,6 +359,7 @@ class VADBenchmarkRunner:
         engine_id: str,
         vad_id: str,
         dataset: Dataset,
+        language: str,
     ) -> list[BenchmarkResult] | None:
         """Benchmark a single engine + VAD combination.
 
@@ -346,6 +367,7 @@ class VADBenchmarkRunner:
             engine_id: Engine identifier
             vad_id: VAD identifier
             dataset: Dataset to benchmark
+            language: Language code (for preset loading)
 
         Returns:
             List of benchmark results, or None if the combination failed
@@ -384,10 +406,23 @@ class VADBenchmarkRunner:
                 self.progress.engine_failed(engine_id, reason, vad_name=vad_id)
             return None
 
-        # Create VAD
+        # Create VAD (use preset if param_source == "preset")
         try:
-            vad = create_vad(vad_id)
-            vad_config = get_vad_config(vad_id)
+            if self.config.param_source == "preset":
+                vad = create_vad_with_preset(vad_id, language)
+                preset_config = get_preset_config(vad_id, language)
+                # Build vad_config dict from preset for result reporting
+                vad_config = {
+                    "type": "preset",
+                    "vad_type": vad_id,
+                    "language": language,
+                    **preset_config.get("backend", {}),
+                    **preset_config.get("vad_config", {}),
+                }
+                logger.debug(f"  Using preset parameters for {vad_id}/{language}")
+            else:
+                vad = create_vad(vad_id)
+                vad_config = get_vad_config(vad_id)
         except Exception as e:
             reason = f"Failed to create VAD - {e}"
             logger.warning(f"{engine_id}+{vad_id}: {reason}")

@@ -46,6 +46,14 @@ on:
         required: false
         default: ''
         type: string
+      param_source:
+        description: 'Parameter source for VAD configuration'
+        required: true
+        default: 'default'
+        type: choice
+        options:
+          - default  # Hardcoded default parameters
+          - preset   # Optimized parameters from livecap_core/vad/presets.py
       runs:
         description: 'Number of runs per file for RTF measurement'
         required: true
@@ -274,10 +282,17 @@ jobs:
           $runs = "${{ inputs.runs }}"
           $engines = "${{ steps.presets.outputs.engines }}"
           $vads = "${{ steps.presets.outputs.vads }}"
+          $paramSource = "${{ inputs.param_source }}"
 
           $args = @("--mode", $mode, "--runs", $runs)
           $args += "--language"
           $args += $languages
+
+          # Add param-source if specified
+          if ($paramSource -ne "" -and $paramSource -ne "default") {
+            $args += "--param-source"
+            $args += $paramSource
+          }
 
           if ($engines -ne "") {
             $engineList = $engines -split "," | ForEach-Object { $_.Trim() }

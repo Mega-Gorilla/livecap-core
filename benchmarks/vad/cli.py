@@ -4,6 +4,7 @@ Usage:
     python -m benchmarks.vad --mode quick
     python -m benchmarks.vad --engine parakeet_ja --vad silero webrtc_mode3 --language ja
     python -m benchmarks.vad --mode standard --runs 3
+    python -m benchmarks.vad --mode standard --param-source preset --language ja
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from pathlib import Path
 
 from .runner import VADBenchmarkConfig, VADBenchmarkRunner
 from .factory import get_all_vad_ids
+from .preset_integration import get_preset_vad_ids
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -61,6 +63,9 @@ Examples:
 
   # Custom output directory
   python -m benchmarks.vad --mode standard --output-dir ./my_results
+
+  # Use optimized presets (loads from livecap_core/vad/presets.py)
+  python -m benchmarks.vad --mode standard --param-source preset --language ja
         """,
     )
 
@@ -89,6 +94,15 @@ Examples:
         nargs="+",
         default=None,
         help="Specific VADs to benchmark. If not specified, uses mode defaults.",
+    )
+    parser.add_argument(
+        "--param-source",
+        choices=["default", "preset"],
+        default="default",
+        help="Parameter source: 'default' uses hardcoded defaults, "
+        "'preset' loads optimized parameters from livecap_core/vad/presets.py. "
+        "When using 'preset', only silero/tenvad/webrtc VADs are available. "
+        "Default: default",
     )
 
     # Measurement options
@@ -152,14 +166,26 @@ def main(args: list[str] | None = None) -> int:
 
     logger = logging.getLogger(__name__)
 
-    # Validate VAD names
-    if parsed.vad:
-        available = set(get_all_vad_ids())
-        for vad_id in parsed.vad:
-            if vad_id not in available:
-                logger.error(f"Unknown VAD: {vad_id}")
-                logger.error(f"Available VADs: {', '.join(sorted(available))}")
-                return 1
+    # Validate VAD names based on param_source
+    param_source = getattr(parsed, 'param_source', 'default')
+    if param_source == "preset":
+        # Preset mode: only allow preset VADs (silero, tenvad, webrtc)
+        preset_vads = set(get_preset_vad_ids())
+        if parsed.vad:
+            for vad_id in parsed.vad:
+                if vad_id not in preset_vads:
+                    logger.error(f"VAD '{vad_id}' has no optimized preset.")
+                    logger.error(f"Available preset VADs: {', '.join(sorted(preset_vads))}")
+                    return 1
+    else:
+        # Default mode: allow all VADs
+        if parsed.vad:
+            available = set(get_all_vad_ids())
+            for vad_id in parsed.vad:
+                if vad_id not in available:
+                    logger.error(f"Unknown VAD: {vad_id}")
+                    logger.error(f"Available VADs: {', '.join(sorted(available))}")
+                    return 1
 
     # Build configuration
     config = VADBenchmarkConfig(
@@ -167,6 +193,7 @@ def main(args: list[str] | None = None) -> int:
         languages=parsed.language,
         engines=parsed.engine,
         vads=parsed.vad,
+        param_source=param_source,
         runs=parsed.runs,
         device=parsed.device,
         output_dir=parsed.output_dir,
@@ -179,6 +206,7 @@ def main(args: list[str] | None = None) -> int:
     logger.info(f"Languages: {config.languages}")
     logger.info(f"Engines: {config.engines or 'mode defaults'}")
     logger.info(f"VADs: {config.vads or 'mode defaults'}")
+    logger.info(f"Param Source: {config.param_source}")
     logger.info(f"Runs: {config.runs}")
     logger.info(f"Device: {config.device}")
     logger.info("=" * 60)
