@@ -40,7 +40,7 @@ VAD（Voice Activity Detection）のパラメータを言語・ユースケー�
 # 最適化 + NeMo エンジン（推奨）
 uv sync --extra engines-nemo --extra optimization
 
-# TorchAudio CUDA バージョン修正（CUDA 12.6 環境の場合）
+# TorchAudio CUDA インストール（CUDA 12.6 環境の場合）
 uv pip install torchaudio==2.9.1+cu126 --index-url https://download.pytorch.org/whl/cu126
 ```
 
@@ -78,6 +78,7 @@ benchmark_results/optimization/
 |-----------|------|-----|
 | `--vad` | 最適化対象の VAD バックエンド | `silero`, `tenvad`, `webrtc` |
 | `--language`, `-l` | 対象言語 | `ja`, `en` |
+※ javadは最適化をサポートしていません
 
 ### オプション引数
 
