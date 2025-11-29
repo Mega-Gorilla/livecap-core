@@ -19,6 +19,7 @@ class TestVADRegistry:
         """Test registry contains all expected VADs."""
         expected = {
             "silero",
+            "webrtc",  # Base entry for preset integration
             "webrtc_mode0",
             "webrtc_mode1",
             "webrtc_mode2",
@@ -34,6 +35,7 @@ class TestVADRegistry:
         """Test protocol VADs have required configuration fields."""
         protocol_vads = [
             "silero",
+            "webrtc",
             "webrtc_mode0",
             "webrtc_mode1",
             "webrtc_mode2",
