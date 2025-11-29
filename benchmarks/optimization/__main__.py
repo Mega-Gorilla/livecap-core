@@ -67,6 +67,19 @@ Examples:
 
   # Save results to JSON
   python -m benchmarks.optimization --vad silero --language ja --output results.json
+
+  # Generate visualization reports (HTML, JSON, Step Summary)
+  python -m benchmarks.optimization --vad silero --language ja --report
+
+Report Generation:
+  Use --report to generate visualization reports after optimization:
+  - HTML: Interactive Plotly charts (saved to benchmark_results/optimization/reports/)
+  - JSON: Best parameters export
+  - Step Summary: Automatically written if GITHUB_STEP_SUMMARY is set
+
+  For real-time monitoring, use Optuna Dashboard:
+    pip install optuna-dashboard
+    optuna-dashboard sqlite:///benchmark_results/optimization/studies.db
         """,
     )
 
@@ -132,6 +145,13 @@ Examples:
         "--storage",
         default=None,
         help="Optuna storage URL (overrides --output-dir)",
+    )
+
+    # Report options
+    parser.add_argument(
+        "--report",
+        action="store_true",
+        help="Generate visualization reports (HTML, JSON) after optimization",
     )
 
     # Logging
@@ -217,6 +237,21 @@ def main(args: list[str] | None = None) -> int:
             save_result(result, parsed.output)
             logger.info("")
             logger.info(f"Results saved to: {parsed.output}")
+
+        # Generate reports if requested
+        if parsed.report:
+            logger.info("")
+            logger.info("Generating reports...")
+            try:
+                report_paths = result.generate_reports()
+                if report_paths.html:
+                    logger.info(f"HTML report: {report_paths.html}")
+                if report_paths.json:
+                    logger.info(f"JSON export: {report_paths.json}")
+                if report_paths.step_summary:
+                    logger.info("Step Summary written to GITHUB_STEP_SUMMARY")
+            except Exception as e:
+                logger.warning(f"Failed to generate some reports: {e}")
 
         # Cleanup
         optimizer.cleanup()

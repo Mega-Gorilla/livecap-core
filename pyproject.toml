@@ -61,6 +61,7 @@ livecap-core = "livecap_core.cli:main"
 "engines-nemo" = [
   "Cython",
   "hydra-core",
+  "matplotlib",  # Required by NeMo for visualization/logging
   "nemo-toolkit>=2.3.0",  # 2.1.0 has canary transcription bug (empty output)
   "nemo_toolkit[asr]>=2.3.0",
   "ml-dtypes>=0.5.0; python_version < '3.13'",
@@ -112,6 +113,8 @@ livecap-core = "livecap_core.cli:main"
 "optimization" = [
   # Bayesian optimization framework
   "optuna>=3.0",
+  # Visualization (HTML reports with interactive charts)
+  "plotly>=5.0",
   # Includes benchmark dependencies
   "jiwer>=3.0",
   "tqdm>=4.0",
