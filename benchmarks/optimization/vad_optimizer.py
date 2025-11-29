@@ -18,6 +18,7 @@ from benchmarks.common.datasets import AudioFile, DatasetManager
 from engines.engine_factory import EngineFactory
 
 from .objective import VADObjective
+from .visualization import OptimizationReport, ReportPaths
 
 if TYPE_CHECKING:
     from engines.base_engine import TranscriptionEngine
@@ -42,6 +43,8 @@ class OptimizationResult:
         duration_s: Total optimization duration in seconds
         study_name: Name of the Optuna study
         created_at: Timestamp of optimization completion
+        study: Optuna study object (for report generation)
+        output_dir: Output directory path
     """
 
     vad_type: str
@@ -52,6 +55,8 @@ class OptimizationResult:
     duration_s: float = 0.0
     study_name: str = ""
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    study: "optuna.Study | None" = field(default=None, repr=False)
+    output_dir: Path | None = field(default=None, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -65,6 +70,36 @@ class OptimizationResult:
             "study_name": self.study_name,
             "created_at": self.created_at,
         }
+
+    def generate_reports(self, output_dir: Path | None = None) -> ReportPaths:
+        """Generate visualization reports (HTML, JSON, Step Summary).
+
+        Args:
+            output_dir: Output directory (uses stored output_dir if not provided)
+
+        Returns:
+            ReportPaths with paths to generated files
+
+        Raises:
+            ValueError: If no study object is available
+        """
+        if self.study is None:
+            raise ValueError(
+                "No study object available for report generation. "
+                "Make sure to run optimize() with the same VADOptimizer instance."
+            )
+
+        report_dir = output_dir or self.output_dir or DEFAULT_OUTPUT_DIR
+        report_dir = Path(report_dir) / "reports"
+
+        report = OptimizationReport(
+            study=self.study,
+            output_dir=report_dir,
+            vad_type=self.vad_type,
+            language=self.language,
+        )
+
+        return report.generate_all()
 
 
 class VADOptimizer:
@@ -219,6 +254,8 @@ class VADOptimizer:
             n_trials=len(study.trials),
             duration_s=duration_s,
             study_name=study_name,
+            study=study,
+            output_dir=output_dir,
         )
 
         logger.info(
