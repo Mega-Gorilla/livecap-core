@@ -37,12 +37,15 @@ VAD（Voice Activity Detection）のパラメータを言語・ユースケー�
 ### インストール
 
 ```bash
-# 最適化依存関係をインストール
-pip install livecap-core[optimization]
+# 最適化 + NeMo エンジン（推奨）
+uv sync --extra engines-nemo --extra optimization
 
-# または uv を使用
-uv sync --extra optimization
+# TorchAudio CUDA バージョン修正（CUDA 12.6 環境の場合）
+uv pip install torchaudio==2.9.1+cu126 --index-url https://download.pytorch.org/whl/cu126
 ```
+
+> **注意**: `uv sync` で複数の extra を使用する場合は、必ず同時に指定してください。
+> 別々に実行すると依存関係が削除される場合があります。
 
 ### 基本的な実行
 
@@ -384,8 +387,8 @@ python -m benchmarks.optimization --engine whispers2t_tiny ...
 ### NeMo エンジンのエラー
 
 ```bash
-# engines-nemo をインストール
-uv sync --extra engines-nemo
+# engines-nemo + optimization を同時にインストール
+uv sync --extra engines-nemo --extra optimization
 
 # TorchAudio の CUDA バージョン不一致
 uv pip install torchaudio==2.9.1+cu126 --index-url https://download.pytorch.org/whl/cu126
