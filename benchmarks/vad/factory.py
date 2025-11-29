@@ -24,6 +24,13 @@ VAD_REGISTRY: dict[str, dict[str, Any]] = {
         "module": "livecap_core.vad.backends.silero",
         "params": {"threshold": 0.5, "onnx": True},
     },
+    # WebRTC base entry (mode specified via backend_params, used by presets)
+    "webrtc": {
+        "type": "protocol",
+        "backend_class": "WebRTCVAD",
+        "module": "livecap_core.vad.backends.webrtc",
+        "params": {"mode": 0, "frame_duration_ms": 20},
+    },
     "webrtc_mode0": {
         "type": "protocol",
         "backend_class": "WebRTCVAD",
