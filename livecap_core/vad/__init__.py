@@ -23,6 +23,12 @@ Usage:
 """
 
 from .config import VADConfig
+from .presets import (
+    VAD_OPTIMIZED_PRESETS,
+    get_available_presets,
+    get_best_vad_for_language,
+    get_optimized_preset,
+)
 from .processor import VADProcessor
 from .state_machine import VADSegment, VADState, VADStateMachine
 
@@ -32,4 +38,9 @@ __all__ = [
     "VADSegment",
     "VADState",
     "VADStateMachine",
+    # Optimized presets
+    "VAD_OPTIMIZED_PRESETS",
+    "get_optimized_preset",
+    "get_available_presets",
+    "get_best_vad_for_language",
 ]
