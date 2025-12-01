@@ -11,10 +11,14 @@
 | `tests/core/engines` | EngineFactory 配線とアダプター登録 |
 | `tests/core/i18n` | 翻訳テーブルとロケールフォールバック |
 | `tests/core/resources` | FFmpeg・モデルキャッシュ・リソース管理 |
+| `tests/vad` | VAD モジュールのユニットテスト（バックエンド、設定、プロセッサ、ステートマシン、プリセット） |
+| `tests/audio_sources` | AudioSource のユニットテスト（FileSource、MicrophoneSource） |
 | `tests/transcription` | 変換ヘルパーのユニットテスト（LiveCap-GUI 互換のため残置） |
 | `tests/integration/transcription` | 音声・ディスク・モデル DL を含むエンドツーエンド |
 | `tests/integration/engines` | 実音源を使ったエンジンスモーク（CPU/GPU 切替可） |
-| `tests/integration/realtime` | FileSource + VAD + StreamTranscriber の統合テスト（Phase 1） |
+| `tests/integration/realtime` | FileSource + VAD + StreamTranscriber の統合テスト |
+| `tests/integration/vad` | VAD の統合テスト（`from_language()` + StreamTranscriber） |
+| `tests/benchmark_tests` | ベンチマーク機能のユニットテスト（ASR/VAD ランナー、最適化） |
 | `tests/utils` | テスト用ユーティリティ（テキスト正規化など） |
 
 実体のあるバイナリやモデルを使うシナリオは `tests/integration/` に置きます。これらも `pytest tests` で走るため、極力決定的に保ち、フラグで明示的に制御します。
@@ -184,3 +188,164 @@ LIVECAP_ENABLE_REALTIME_E2E=1 uv run python -m pytest tests/integration/realtime
 ローカル Windows デバッグ時は、同様に [ffbinaries-prebuilt](https://github.com/ffbinaries/ffbinaries-prebuilt/releases) の 6.1 ビルドを `ffmpeg-bin/` に展開し、`LIVECAP_FFMPEG_BIN` をそのパスに向けてください。self-hosted GPU ランナー（Linux/Windows）を使う場合は、CUDA 対応ハードウェア、事前インストール済み Python（Windows は `python3.12` をピン）、torch・NVIDIA ドライバ、そして `LIVECAP_ENABLE_GPU_SMOKE=1`（必要に応じて `LIVECAP_REQUIRE_ENGINE_SMOKE=1`）が必要です。
 
 ワークフローや依存プロファイルを変更した場合は、本ドキュメントも併せて更新してください。
+
+---
+
+## VAD テストの詳細
+
+VAD（Voice Activity Detection）関連のテストは以下の構成になっています。
+
+### ユニットテスト (`tests/vad/`)
+
+| ファイル | テスト対象 | 説明 |
+| --- | --- | --- |
+| `test_backends.py` | VADBackend 実装 | Silero、WebRTC、TenVAD バックエンドの動作確認 |
+| `test_config.py` | VADConfig | 設定の作成、シリアライズ、デシリアライズ |
+| `test_processor.py` | VADProcessor | チャンク処理、リサンプリング、`from_language()` ファクトリ |
+| `test_state_machine.py` | VADStateMachine | 状態遷移（SILENCE → POTENTIAL_SPEECH → SPEECH → ENDING） |
+| `test_presets.py` | presets モジュール | 最適化済みプリセットの取得、言語別ベスト VAD |
+
+### 統合テスト (`tests/integration/vad/`)
+
+| ファイル | テスト対象 | 説明 |
+| --- | --- | --- |
+| `test_from_language_integration.py` | `VADProcessor.from_language()` | StreamTranscriber との統合、実音声ファイルでの動作確認 |
+
+### VAD テストの実行
+
+```bash
+# VAD ユニットテストのみ
+uv run pytest tests/vad/ -v
+
+# VAD 統合テストのみ
+uv run pytest tests/integration/vad/ -v
+
+# VAD 関連すべて
+uv run pytest tests/vad/ tests/integration/vad/ -v
+```
+
+**注意**: Silero VAD テストは PyTorch/TorchAudio が必要です。環境によっては CUDA バージョンの不一致でスキップされる場合があります。
+
+---
+
+## ベンチマークテストの詳細
+
+ベンチマーク機能（`benchmarks/`）のユニットテストは `tests/benchmark_tests/` に配置されています。
+
+### 構成
+
+| Path | テスト対象 |
+| --- | --- |
+| `tests/benchmark_tests/asr/` | ASR ベンチマークランナー |
+| `tests/benchmark_tests/vad/` | VAD ベンチマークファクトリ、ランナー、プリセット統合 |
+| `tests/benchmark_tests/common/` | 共通エンジン管理、プログレスレポーター |
+| `tests/benchmark_tests/optimization/` | パラメータ最適化（Optuna 連携、可視化） |
+
+### ベンチマークテストの実行
+
+```bash
+# ベンチマーク関連テストのみ
+uv run pytest tests/benchmark_tests/ -v
+
+# 最適化テストのみ（Optuna 依存）
+uv run pytest tests/benchmark_tests/optimization/ -v
+```
+
+**注意**: ベンチマークテストは `benchmark` extra の依存が必要な場合があります。
+
+```bash
+uv sync --extra benchmark --extra dev
+```
+
+---
+
+## 新規テスト追加ガイドライン
+
+### テスト配置の原則
+
+| テストの種類 | 配置先 | 基準 |
+| --- | --- | --- |
+| ユニットテスト | `tests/<module>/` | 単一モジュール/クラスのテスト、外部依存なし |
+| 統合テスト | `tests/integration/<feature>/` | 複数モジュールの連携、実ファイル/モデル使用 |
+| ベンチマークテスト | `tests/benchmark_tests/` | `benchmarks/` モジュールのテスト |
+
+### ディレクトリ選択フローチャート
+
+1. **実ファイル（音声、モデル）を使う？**
+   - Yes → `tests/integration/`
+   - No → 次へ
+
+2. **`benchmarks/` モジュールのテスト？**
+   - Yes → `tests/benchmark_tests/`
+   - No → 次へ
+
+3. **対象モジュールは？**
+   - `livecap_core/vad/` → `tests/vad/`
+   - `livecap_core/audio_sources/` → `tests/audio_sources/`
+   - `livecap_core/transcription/` → `tests/transcription/`
+   - その他 `livecap_core/` → `tests/core/<submodule>/`
+
+### テストマーカーの使用
+
+テストに適切なマーカーを付与してください：
+
+```python
+import pytest
+
+# GPU 必須テスト
+@pytest.mark.gpu
+def test_cuda_acceleration():
+    ...
+
+# エンジンスモークテスト（実音源使用）
+@pytest.mark.engine_smoke
+def test_whisper_transcription():
+    ...
+
+# リアルタイム E2E テスト
+@pytest.mark.realtime_e2e
+def test_streaming_transcription():
+    ...
+```
+
+### フィクスチャの活用
+
+共通フィクスチャは以下に定義されています：
+
+| ファイル | 提供するフィクスチャ |
+| --- | --- |
+| `tests/conftest.py` | プロジェクト全体の共通フィクスチャ |
+| `tests/benchmark_tests/conftest.py` | ベンチマーク用フィクスチャ（`github_step_summary`） |
+| `tests/audio_sources/conftest.py` | 音声ソース用フィクスチャ |
+
+### テストファイルの命名規則
+
+- ファイル名: `test_<機能名>.py`
+- クラス名: `Test<機能名><カテゴリ>`
+- メソッド名: `test_<動作>_<条件>`
+
+```python
+# 例: tests/vad/test_processor.py
+class TestVADProcessorFromLanguage:
+    def test_from_language_ja_uses_tenvad(self):
+        ...
+
+    def test_from_language_unsupported_raises_valueerror(self):
+        ...
+```
+
+### 依存のスキップ処理
+
+オプショナルな依存がない場合は適切にスキップしてください：
+
+```python
+def test_silero_backend(self):
+    try:
+        from livecap_core.vad.backends import SileroVAD
+        vad = SileroVAD()
+    except (ImportError, RuntimeError, AttributeError) as e:
+        pytest.skip(f"Silero VAD not available: {e}")
+
+    # テスト本体
+    assert vad.name == "silero"
+```
