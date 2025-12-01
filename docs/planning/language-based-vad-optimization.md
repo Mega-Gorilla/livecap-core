@@ -123,17 +123,18 @@ def from_language(cls, language: str) -> "VADProcessor":
 ```python
 @classmethod
 def from_language(cls, language: str) -> "VADProcessor":
-    from .presets import get_best_vad_for_language
-    from .config import VADConfig
+    from .presets import get_available_presets, get_best_vad_for_language
 
     # 1. 最適なVADとプリセットを取得
     result = get_best_vad_for_language(language)
 
     if result is None:
-        # プリセットがない言語 → エラー
+        # プリセットがない言語 → エラー（サポート言語を動的に取得）
+        available = get_available_presets()
+        supported = sorted(set(lang for _, lang in available))
         raise ValueError(
             f"No optimized preset for language '{language}'. "
-            f"Supported languages: ja, en. "
+            f"Supported languages: {', '.join(supported)}. "
             f"Use VADProcessor() for default Silero VAD."
         )
 
@@ -144,20 +145,28 @@ def from_language(cls, language: str) -> "VADProcessor":
     # 2. バックエンドを作成
     backend = cls._create_backend(vad_type, backend_params)
 
-    logger.info(f"Selected {vad_type} optimized for language '{language}'")
+    logger.info(f"Created VADProcessor with {vad_type} optimized for '{language}'")
     return cls(config=vad_config, backend=backend)
 
 @classmethod
 def _create_backend(cls, vad_type: str, backend_params: dict) -> VADBackend:
     """バックエンドを作成
 
+    Args:
+        vad_type: VADバックエンドの種類 ("silero", "tenvad", "webrtc")
+        backend_params: プリセットから取得したバックエンド固有パラメータ
+
     Raises:
         ImportError: VADバックエンドがインストールされていない場合
         ValueError: 未知のVADタイプの場合
+
+    Note:
+        SileroVADのthresholdはVADConfigで管理されるため、
+        バックエンドには渡さない（onnx=Trueのみ指定）
     """
     if vad_type == "silero":
         from .backends.silero import SileroVAD
-        return SileroVAD(**backend_params)
+        return SileroVAD(onnx=True, **backend_params)
     elif vad_type == "tenvad":
         from .backends.tenvad import TenVAD
         return TenVAD(**backend_params)
