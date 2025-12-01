@@ -12,7 +12,9 @@ livecap-cli ドキュメントの目次と状態管理。
 
 ### Active
 
-現在アクティブな計画はありません。
+| ドキュメント | Issue | 説明 |
+|-------------|-------|------|
+| [phase2-api-config-simplification.md](planning/phase2-api-config-simplification.md) | #70 | API 統一と Config 簡素化計画 |
 
 ### Archive (完了)
 
@@ -92,8 +94,9 @@ livecap-cli ドキュメントの目次と状態管理。
 | Issue | 状態 | 説明 |
 |-------|------|------|
 | #69 | ✅ Closed | Phase 1: リアルタイム文字起こし実装 |
+| #70 | 🚧 Open | Phase 2: API 統一と Config 簡素化 |
 | #86 | ✅ Closed | VAD + ASR ベンチマーク実装 |
 | #126 | ✅ Closed | Phase D: VAD パラメータ最適化 |
 | #127 | ✅ Closed | ドキュメント整理・アーカイブ化 |
 | #139 | ✅ Closed | 言語別VAD最適化の実装 |
-| #154 | 🚧 Open | ドキュメント構成のリファクタリング |
+| #154 | ✅ Closed | ドキュメント構成のリファクタリング |
