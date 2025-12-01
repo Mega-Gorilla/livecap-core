@@ -171,16 +171,14 @@ LIVECAP_ENABLE_REALTIME_E2E=1 uv run python -m pytest tests/integration/realtime
 
 各ワークフローの実行条件は以下の通りです。
 
-| ワークフロー | push (main) | PR | スケジュール | 手動 | paths フィルタ |
+| ワークフロー | push (main) | PR | スケジュール | 手動 | paths-ignore |
 | --- | :---: | :---: | :---: | :---: | --- |
-| `core-tests.yml` | ✅ | ✅ | - | ✅ | なし（全変更で実行） |
-| `core-tests-windows.yml` | ✅ | ✅ | - | ✅ | なし（全変更で実行） |
+| `core-tests.yml` | ✅ | ✅ | - | ✅ | `docs/**`, `*.md`, `.gitignore` |
+| `core-tests-windows.yml` | ✅ | ✅ | - | ✅ | `docs/**`, `*.md`, `.gitignore` |
 | `integration-tests.yml` | - | ✅ | 週次（月曜 03:00 UTC） | ✅ | `engines/**`, `livecap_core/**`, `tests/integration/**`, `pyproject.toml`, `uv.lock` |
 | `benchmark-asr.yml` | - | - | - | ✅ | - |
 | `benchmark-vad.yml` | - | - | - | ✅ | - |
 | `verify-self-hosted-*.yml` | - | - | - | ✅ | - |
-
-> **Note**: `docs/**` や `*.md` の変更のみの場合、`core-tests*.yml` が実行されます。ドキュメントのみの変更でテストをスキップしたい場合は、今後 `paths-ignore` の追加を検討してください。
 
 ## CI 対応表
 
