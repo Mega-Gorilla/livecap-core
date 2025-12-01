@@ -329,8 +329,88 @@ class TestStreamTranscriberLanguage:
 | `tests/transcription/test_stream.py` | テスト追加 |
 | `docs/guides/vad-optimization.md` | 使用例追加 |
 
+## 前提タスク: presets.pyスコア更新
+
+### 問題
+
+`presets.py` のスコアはPhase D-2（Bayesian最適化時）の値で、Phase D-4（実ベンチマーク）の結果と乖離がある。
+
+| VAD | 言語 | presets.py (D-2) | Benchmark (D-4) |
+|-----|------|-----------------|-----------------|
+| silero | ja | 6.47% | 8.2% |
+| tenvad | ja | 7.06% | **7.2%** |
+| webrtc | ja | 7.05% | 7.7% |
+| silero | en | 3.96% | 4.0% |
+| tenvad | en | 3.40% | 3.4% |
+| webrtc | en | 3.31% | **3.3%** |
+
+**影響**: `get_best_vad_for_language("ja")` が silero を返すが、実際の最適は tenvad。
+
+### 更新内容
+
+`livecap_core/vad/presets.py` の `metadata.score` をPhase D-4の結果で更新：
+
+```python
+VAD_OPTIMIZED_PRESETS = {
+    "silero": {
+        "ja": {
+            "metadata": {
+                "score": 0.082,  # 6.47% → 8.2%
+                ...
+            },
+        },
+        "en": {
+            "metadata": {
+                "score": 0.040,  # 3.96% → 4.0%
+                ...
+            },
+        },
+    },
+    "tenvad": {
+        "ja": {
+            "metadata": {
+                "score": 0.072,  # 7.06% → 7.2%
+                ...
+            },
+        },
+        "en": {
+            "metadata": {
+                "score": 0.034,  # 3.40% → 3.4%
+                ...
+            },
+        },
+    },
+    "webrtc": {
+        "ja": {
+            "metadata": {
+                "score": 0.077,  # 7.05% → 7.7%
+                ...
+            },
+        },
+        "en": {
+            "metadata": {
+                "score": 0.033,  # 3.31% → 3.3%
+                ...
+            },
+        },
+    },
+}
+```
+
+### タスク追加
+
+**Phase 0: presets.pyスコア更新** (推定: 30min)
+
+- [ ] `livecap_core/vad/presets.py`
+  - [ ] metadata.score をPhase D-4の結果で更新
+  - [ ] コメントに測定条件を追記（standard mode, parakeet系エンジン）
+- [ ] 動作確認
+  - [ ] `get_best_vad_for_language("ja")` → tenvad
+  - [ ] `get_best_vad_for_language("en")` → webrtc
+
 ## 参考
 
 - Issue #126: VADパラメータ最適化
 - Issue #64: Epic livecap-cli リファクタリング
 - `livecap_core/vad/presets.py`: 最適化済みパラメータ
+- VAD Benchmark Run #19782802125: Phase D-4 結果
