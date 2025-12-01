@@ -168,7 +168,7 @@ speech_pad_ms ↓ → タイトな切り出し → レイテンシ改善
 
 ### 1. Optimization History（最適化履歴）
 
-![Optimization History](https://via.placeholder.com/600x300?text=Optimization+History)
+![Optimization History](../assets/images/optimization/optimization-history.png)
 
 **読み方:**
 - **X軸**: トライアル番号
@@ -182,7 +182,7 @@ speech_pad_ms ↓ → タイトな切り出し → レイテンシ改善
 
 ### 2. Parameter Importance（パラメータ重要度）
 
-![Parameter Importance](https://via.placeholder.com/600x300?text=Parameter+Importance)
+![Parameter Importance](../assets/images/optimization/parameter-importance.png)
 
 **読み方:**
 - 各パラメータが目的関数に与える影響度を表示
@@ -194,7 +194,7 @@ speech_pad_ms ↓ → タイトな切り出し → レイテンシ改善
 
 ### 3. Contour Plot（等高線プロット）
 
-![Contour Plot](https://via.placeholder.com/600x300?text=Contour+Plot)
+![Contour Plot](../assets/images/optimization/contour-plot.png)
 
 **読み方:**
 - 重要度上位 2 パラメータの相互作用を可視化
@@ -207,7 +207,7 @@ speech_pad_ms ↓ → タイトな切り出し → レイテンシ改善
 
 ### 4. Parallel Coordinate（並行座標プロット）
 
-![Parallel Coordinate](https://via.placeholder.com/600x300?text=Parallel+Coordinate)
+![Parallel Coordinate](../assets/images/optimization/parallel-coordinate.png)
 
 **読み方:**
 - 各縦軸がパラメータ
