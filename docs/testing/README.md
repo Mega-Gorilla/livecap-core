@@ -308,15 +308,15 @@ def test_streaming_transcription():
     ...
 ```
 
-### フィクスチャの活用
+### pytest 設定ファイル（conftest.py）
 
-共通フィクスチャは以下に定義されています：
+共通の pytest 設定とフックは以下に定義されています：
 
-| ファイル | 提供するフィクスチャ |
+| ファイル | 内容 |
 | --- | --- |
-| `tests/conftest.py` | プロジェクト全体の共通フィクスチャ |
-| `tests/benchmark_tests/conftest.py` | ベンチマーク用フィクスチャ（`github_step_summary`） |
-| `tests/audio_sources/conftest.py` | 音声ソース用フィクスチャ |
+| `tests/conftest.py` | `pytest_terminal_summary` フック（GitHub Actions 用サマリー出力） |
+| `tests/benchmark_tests/conftest.py` | `clean_github_env` フィクスチャ（テスト時の環境変数クリア） |
+| `tests/audio_sources/conftest.py` | `pytest_ignore_collect` フック（PortAudio 未インストール時のスキップ） |
 
 ### テストファイルの命名規則
 
