@@ -29,8 +29,10 @@ class TestSileroVAD:
             from livecap_core.vad.backends import SileroVAD
 
             return SileroVAD(onnx=True)
-        except ImportError:
-            pytest.skip("silero-vad not installed")
+        except (ImportError, RuntimeError, AttributeError) as e:
+            # Silero requires torch/torchaudio - skip if not available or version mismatch
+            # AttributeError can occur during circular import with CUDA version conflicts
+            pytest.skip(f"Silero VAD not available: {e}")
 
     def test_frame_size(self, silero_vad):
         """フレームサイズ"""
