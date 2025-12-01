@@ -40,9 +40,18 @@ livecap-cli ドキュメントの目次と状態管理。
 
 技術調査と比較分析。
 
+### VAD リファレンス
+
 | ドキュメント | 説明 |
 |-------------|------|
+| [vad/backends.md](reference/vad/backends.md) | VAD バックエンドリファレンス（Silero, WebRTC, TenVAD） |
+| [vad/config.md](reference/vad/config.md) | VADConfig 共通パラメータリファレンス |
 | [vad/comparison.md](reference/vad/comparison.md) | VAD バックエンド比較分析 + ベンチマーク結果 |
+
+### その他
+
+| ドキュメント | 説明 |
+|-------------|------|
 | [feature-inventory.md](reference/feature-inventory.md) | 機能一覧 |
 | [livecap-gui-realtime-analysis.md](reference/livecap-gui-realtime-analysis.md) | livecap-gui リアルタイム処理分析 |
 

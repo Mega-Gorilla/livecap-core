@@ -294,7 +294,7 @@ with warnings.catch_warnings():
 | `WebRTCVAD` | `frame_duration_ms` | フレーム長（10, 20, 30ms） |
 | `TenVAD` | `hop_size` | フレームホップサイズ |
 
-> **Note**: 詳細は [VAD バックエンド比較](../reference/vad/comparison.md) を参照してください。
+> **Note**: 詳細は [VAD バックエンドリファレンス](../reference/vad/backends.md) および [VAD バックエンド比較](../reference/vad/comparison.md) を参照してください。
 
 ---
 
@@ -570,8 +570,15 @@ engine = EngineFactory.create_engine("whispers2t_tiny", "cpu")
 
 ## 関連ドキュメント
 
+### VAD リファレンス
+
+- [VAD バックエンドリファレンス](../reference/vad/backends.md) - 各バックエンドの詳細仕様・固有パラメータ
+- [VADConfig リファレンス](../reference/vad/config.md) - 共通パラメータの詳細
+- [VAD バックエンド比較](../reference/vad/comparison.md) - Silero / TenVAD / WebRTC のベンチマーク結果
+
+### ガイド・その他
+
 - [VAD Bayesian 最適化ガイド](./benchmark/vad-optimization.md) - カスタムパラメータチューニング
-- [VAD バックエンド比較](../reference/vad/comparison.md) - Silero / TenVAD / WebRTC の比較
 - [API 仕様書](../architecture/core-api-spec.md#8-phase-1-リアルタイム文字起こし-api)
 - [機能一覧](../reference/feature-inventory.md#22-リアルタイム文字起こし)
 - [テストガイド](../testing/README.md)
