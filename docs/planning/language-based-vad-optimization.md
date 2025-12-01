@@ -297,8 +297,11 @@ class TestVADProcessorFromLanguageIntegration:
 ### Phase 3: ドキュメント・仕上げ (推定: 1.5h)
 
 - [ ] `docs/guides/vad-optimization.md` 更新
-  - [ ] `from_language()` 使用例追加
-  - [ ] StreamTranscriberとの統合例追加
+  - [ ] `VADProcessor.from_language()` の詳細な使い方
+  - [ ] 各言語での推奨VADバックエンドの説明
+  - [ ] StreamTranscriberとの統合例（推奨パターン）
+  - [ ] フォールバック動作の説明
+  - [ ] 基本サンプルからの参照リンク追加
 
 - [ ] `examples/realtime/custom_vad_config.py` 更新
   - [ ] `--language` オプション追加（`VADProcessor.from_language()` を使用）
