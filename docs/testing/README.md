@@ -271,19 +271,25 @@ uv sync --extra benchmark --extra dev
 
 ### ディレクトリ選択フローチャート
 
-1. **実ファイル（音声、モデル）を使う？**
+1. **複数コンポーネント（モジュール）の連携をテスト？**
    - Yes → `tests/integration/`
    - No → 次へ
 
-2. **`benchmarks/` モジュールのテスト？**
+2. **重量級リソース（ASRモデルDL、大規模コーパス）を使用？**
+   - Yes → `tests/integration/`
+   - No → 次へ
+
+3. **`benchmarks/` モジュールのテスト？**
    - Yes → `tests/benchmark_tests/`
    - No → 次へ
 
-3. **対象モジュールは？**
+4. **対象モジュールは？**
    - `livecap_core/vad/` → `tests/vad/`
    - `livecap_core/audio_sources/` → `tests/audio_sources/`
    - `livecap_core/transcription/` → `tests/transcription/`
    - その他 `livecap_core/` → `tests/core/<submodule>/`
+
+> **軽量フィクスチャの扱い**: `tests/assets/audio/` 内の短い音声ファイル（数秒程度）や、VADバックエンドのモデル（Silero ONNX等）はユニットテストで使用可能です。
 
 ### テストマーカーの使用
 
