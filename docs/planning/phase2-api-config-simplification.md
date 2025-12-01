@@ -169,6 +169,33 @@ def main(argv: list[str] | None = None) -> int:
     ...
 ```
 
+#### `--info` 出力内容（具体化）
+
+Config 検証を削除し、以下の情報を表示：
+
+| 項目 | 説明 | 実装 |
+|------|------|------|
+| **FFmpeg** | パス / 利用可能フラグ | `get_ffmpeg_manager().resolve_executable()` |
+| **Models root** | モデル保存先ディレクトリ | `get_model_manager().models_root` |
+| **Cache root** | キャッシュディレクトリ | `get_model_manager().cache_root` |
+| **CUDA** | CUDA 利用可否 | `torch.cuda.is_available()` |
+| **VAD backends** | 利用可能な VAD 一覧 | `get_available_presets()` |
+| **ASR engines** | 登録済みエンジン一覧 | `EngineMetadata.get_all()` |
+| **Translator** | 翻訳機能の状態 | `diagnose_i18n()` |
+
+```bash
+# 出力例
+$ livecap-core --info
+LiveCap Core diagnostics:
+  FFmpeg: /usr/bin/ffmpeg
+  Models root: ~/.cache/livecap/models
+  Cache root: ~/.cache/livecap
+  CUDA available: yes (RTX 4090)
+  VAD backends: silero, tenvad, webrtc
+  ASR engines: reazonspeech, parakeet, parakeet_ja, whispers2t_base, ...
+  Translator: not registered (fallback only)
+```
+
 ---
 
 ## 4. 実装タスク
@@ -410,6 +437,8 @@ Config 廃止に伴い削除するファイル。これらは他から参照さ�
 
 Config を参照している箇所と、具体的な変更内容。
 
+#### コードファイル
+
 | ファイル | 現在の使用 | 変更内容 |
 |----------|-----------|----------|
 | `engines/engine_factory.py` | `build_core_config()` 呼び出し | `LANGUAGE_DEFAULTS` クラス定数に置き換え |
@@ -421,6 +450,17 @@ Config を参照している箇所と、具体的な変更内容。
 | `tests/integration/engines/test_smoke_engines.py` | `_build_config()` 関数 | `language` 引数で直接指定 |
 | `tests/integration/transcription/test_file_transcription_pipeline.py` | `config=get_default_config()` | `config` パラメータ削除 |
 | `tests/integration/realtime/test_e2e_realtime_flow.py` | `config["transcription"]` 操作 | Config 操作を削除 |
+
+#### ドキュメントファイル
+
+| ファイル | 現在の使用 | 変更内容 |
+|----------|-----------|----------|
+| `README.md` | `get_default_config()` サンプルコード | 新 API でのサンプルに更新 |
+| `CLAUDE.md` | `--dump-config` 例、Configuration セクション | `--info` に更新、Config 説明を削除 |
+| `AGENTS.md` | `--dump-config` 例 | `--info` に更新 |
+| `GEMINI.md` | `--dump-config` 例 | `--info` に更新 |
+| `docs/architecture/core-api-spec.md` | Config API 仕様、サンプルコード多数 | 新 API 仕様に全面更新 |
+| `docs/reference/feature-inventory.md` | Config 使用例多数 | 新 API でのサンプルに更新 |
 
 ### 10.3 誤検知（影響なし）
 
@@ -434,8 +474,11 @@ Grep で検出されたが、実際には影響がない箇所。
 ### 10.4 評価サマリー
 
 - **削除ファイル**: 7 ファイル
-- **更新ファイル**: 9 ファイル
+- **更新ファイル（コード）**: 9 ファイル
+- **更新ファイル（ドキュメント）**: 6 ファイル
 - **影響範囲**: 限定的、安全に実装可能
+
+> **注意**: `docs/architecture/core-api-spec.md` と `docs/reference/feature-inventory.md` は Config 参照が多いため、Phase 2 完了後に全面的な見直しが必要です。
 
 ---
 
@@ -446,3 +489,4 @@ Grep で検出されたが、実際には影響がない箇所。
 | 2025-12-01 | 初版作成（Config 簡素化計画） |
 | 2025-12-01 | **方針転換: Config 廃止に変更** |
 | 2025-12-01 | セクション 10「影響調査結果」追加、リスク評価詳細化 |
+| 2025-12-01 | CLI `--info` 出力内容を具体化、ドキュメント更新対象を追加 |
