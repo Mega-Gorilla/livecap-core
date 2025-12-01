@@ -381,11 +381,61 @@ Step 8: 全テスト実行・確認
 
 ## 9. リスクと対策
 
-| リスク | 対策 |
-|--------|------|
-| 見落としたコード依存 | Grep で `get_default_config`, `build_core_config`, `DEFAULT_CONFIG` を検索 |
-| エンジン固有設定の欠落 | 各エンジンの使用状況を個別確認 |
-| テスト失敗 | 段階的に実行、各ステップで確認 |
+| リスク | レベル | 対策 |
+|--------|--------|------|
+| 見落としたコード依存 | 低 | Grep で網羅的に検索済み（下記参照） |
+| エンジン固有設定の欠落 | 中 | 各エンジンの使用状況を個別確認 |
+| テスト失敗 | 中 | 段階的に実行、各ステップで確認 |
+| Examples 動作不良 | 低 | 全 Examples の動作確認を検証項目に含む |
+
+---
+
+## 10. 影響調査結果
+
+### 10.1 削除対象ファイル（影響なし）
+
+Config 廃止に伴い削除するファイル。これらは他から参照されないため影響なし。
+
+| ファイル | 理由 |
+|----------|------|
+| `config/__init__.py` | Config 廃止 |
+| `config/core_config_builder.py` | Config 廃止 |
+| `livecap_core/config/defaults.py` | Config 廃止 |
+| `livecap_core/config/schema.py` | Config 廃止 |
+| `livecap_core/config/validator.py` | Config 廃止 |
+| `tests/core/config/test_config_defaults.py` | Config 廃止 |
+| `tests/core/config/test_core_config_builder.py` | Config 廃止 |
+
+### 10.2 更新が必要なファイル
+
+Config を参照している箇所と、具体的な変更内容。
+
+| ファイル | 現在の使用 | 変更内容 |
+|----------|-----------|----------|
+| `engines/engine_factory.py` | `build_core_config()` 呼び出し | `LANGUAGE_DEFAULTS` クラス定数に置き換え |
+| `livecap_core/cli.py` | `--dump-config`, `ConfigValidator` | `--info` に置き換え、Validator 削除 |
+| `examples/realtime/basic_file_transcription.py` | `get_default_config()` | 直接パラメータ指定に変更 |
+| `examples/realtime/async_microphone.py` | `get_default_config()` | 直接パラメータ指定に変更 |
+| `examples/realtime/callback_api.py` | `get_default_config()` | 直接パラメータ指定に変更 |
+| `examples/realtime/custom_vad_config.py` | `get_default_config()` | 直接パラメータ指定に変更 |
+| `tests/integration/engines/test_smoke_engines.py` | `_build_config()` 関数 | `language` 引数で直接指定 |
+| `tests/integration/transcription/test_file_transcription_pipeline.py` | `config=get_default_config()` | `config` パラメータ削除 |
+| `tests/integration/realtime/test_e2e_realtime_flow.py` | `config["transcription"]` 操作 | Config 操作を削除 |
+
+### 10.3 誤検知（影響なし）
+
+Grep で検出されたが、実際には影響がない箇所。
+
+| ファイル | 理由 |
+|----------|------|
+| `livecap_core/vad/config.py` | VADConfig dataclass（維持対象） |
+| `benchmarks/common/engines.py` | 別の config 変数（`language` 引数化で対応済み） |
+
+### 10.4 評価サマリー
+
+- **削除ファイル**: 7 ファイル
+- **更新ファイル**: 9 ファイル
+- **影響範囲**: 限定的、安全に実装可能
 
 ---
 
@@ -395,3 +445,4 @@ Step 8: 全テスト実行・確認
 |------|----------|
 | 2025-12-01 | 初版作成（Config 簡素化計画） |
 | 2025-12-01 | **方針転換: Config 廃止に変更** |
+| 2025-12-01 | セクション 10「影響調査結果」追加、リスク評価詳細化 |
