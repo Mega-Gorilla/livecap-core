@@ -9,7 +9,8 @@ Status: **PLANNING**
 |------|------|------|
 | TenVADライセンス警告 | そのまま出力 | ライセンス上の重要な警告のため |
 | VADデフォルトインストール | JaVAD以外を`[vad]`に含める | 言語別VAD最適化の前提条件 |
-| 未サポート言語 | Sileroフォールバック + INFOログ | "No optimized preset registered for language '...', falling back to Silero" |
+| 未サポート言語 | **ValueError例外をraise** | サポート言語: ja, en のみ。他言語は`VADProcessor()`を使用 |
+| フォールバック機構 | **廃止** | `fallback_to_silero`パラメータは実装しない。明示的なエラーを優先 |
 | APIの公開範囲 | 追加エクスポート不要 | `VADProcessor`は既にエクスポート済み |
 | テスト依存関係 | JaVAD以外は必須 | スキップ不要 |
 | StreamTranscriber言語不一致 | **Option B: StreamTranscriberには追加しない** | 責任の分離、明示的な設定を優先 |
@@ -93,22 +94,18 @@ class StreamTranscriber:
 
 ```python
 @classmethod
-def from_language(
-    cls,
-    language: str,
-    fallback_to_silero: bool = True,
-) -> "VADProcessor":
+def from_language(cls, language: str) -> "VADProcessor":
     """言語に最適なVADを使用してVADProcessorを作成
 
     Args:
-        language: 言語コード ("ja", "en", etc.)
-        fallback_to_silero: バックエンドが利用できない場合にSileroにフォールバック
+        language: 言語コード ("ja", "en")
 
     Returns:
         VADProcessor with optimized backend and config
 
     Raises:
-        ImportError: fallback_to_silero=False で必要なバックエンドがない場合
+        ValueError: 未サポート言語の場合
+        ImportError: 必要なVADバックエンドがインストールされていない場合
     """
 ```
 
@@ -116,7 +113,7 @@ def from_language(
 
 ```python
 @classmethod
-def from_language(cls, language: str, fallback_to_silero: bool = True) -> "VADProcessor":
+def from_language(cls, language: str) -> "VADProcessor":
     from .presets import get_best_vad_for_language
     from .config import VADConfig
 
@@ -124,49 +121,42 @@ def from_language(cls, language: str, fallback_to_silero: bool = True) -> "VADPr
     result = get_best_vad_for_language(language)
 
     if result is None:
-        # プリセットがない言語 → Sileroにフォールバック
-        logger.info(
-            f"No optimized preset registered for language '{language}', "
-            "falling back to Silero"
+        # プリセットがない言語 → エラー
+        raise ValueError(
+            f"No optimized preset for language '{language}'. "
+            f"Supported languages: ja, en. "
+            f"Use VADProcessor() for default Silero VAD."
         )
-        return cls()
 
     vad_type, preset = result
     vad_config = VADConfig.from_dict(preset["vad_config"])
     backend_params = preset.get("backend", {})
 
     # 2. バックエンドを作成
-    backend = cls._create_backend(vad_type, backend_params, fallback_to_silero)
+    backend = cls._create_backend(vad_type, backend_params)
 
     logger.info(f"Selected {vad_type} optimized for language '{language}'")
     return cls(config=vad_config, backend=backend)
 
 @classmethod
-def _create_backend(
-    cls,
-    vad_type: str,
-    backend_params: dict,
-    fallback_to_silero: bool,
-) -> VADBackend:
-    """バックエンドを作成、必要に応じてフォールバック"""
-    try:
-        if vad_type == "silero":
-            from .backends.silero import SileroVAD
-            return SileroVAD(**backend_params)
-        elif vad_type == "tenvad":
-            from .backends.tenvad import TenVAD
-            return TenVAD(**backend_params)
-        elif vad_type == "webrtc":
-            from .backends.webrtc import WebRTCVAD
-            return WebRTCVAD(**backend_params)
-        else:
-            raise ValueError(f"Unknown VAD type: {vad_type}")
-    except ImportError as e:
-        if fallback_to_silero:
-            logger.warning(f"{vad_type} not available, falling back to Silero: {e}")
-            from .backends.silero import SileroVAD
-            return SileroVAD()
-        raise
+def _create_backend(cls, vad_type: str, backend_params: dict) -> VADBackend:
+    """バックエンドを作成
+
+    Raises:
+        ImportError: VADバックエンドがインストールされていない場合
+        ValueError: 未知のVADタイプの場合
+    """
+    if vad_type == "silero":
+        from .backends.silero import SileroVAD
+        return SileroVAD(**backend_params)
+    elif vad_type == "tenvad":
+        from .backends.tenvad import TenVAD
+        return TenVAD(**backend_params)
+    elif vad_type == "webrtc":
+        from .backends.webrtc import WebRTCVAD
+        return WebRTCVAD(**backend_params)
+    else:
+        raise ValueError(f"Unknown VAD type: {vad_type}")
 ```
 
 ### Phase 2: 使用例とドキュメント
@@ -220,7 +210,6 @@ class TestVADProcessorFromLanguage:
 
     def test_from_language_ja_uses_tenvad(self):
         """日本語はTenVADを使用"""
-        # TenVADが利用可能な場合
         processor = VADProcessor.from_language("ja")
         assert "tenvad" in processor.backend_name
 
@@ -229,20 +218,16 @@ class TestVADProcessorFromLanguage:
         processor = VADProcessor.from_language("en")
         assert "webrtc" in processor.backend_name
 
-    def test_from_language_unknown_falls_back_to_silero(self):
-        """未知の言語はSileroにフォールバック"""
-        processor = VADProcessor.from_language("zh")
-        assert "silero" in processor.backend_name
+    def test_from_language_unsupported_raises_valueerror(self):
+        """未サポート言語はValueError"""
+        with pytest.raises(ValueError, match="No optimized preset"):
+            VADProcessor.from_language("zh")
 
-    def test_from_language_fallback_when_backend_unavailable(self):
-        """バックエンドが利用できない場合のフォールバック"""
-        # モックで依存関係がないシナリオをテスト
-        ...
-
-    def test_from_language_no_fallback_raises(self):
-        """fallback_to_silero=Falseで依存関係がない場合は例外"""
+    def test_from_language_missing_backend_raises_importerror(self):
+        """バックエンドがインストールされていない場合はImportError"""
+        # モックでTenVADがインストールされていないシナリオをテスト
         with pytest.raises(ImportError):
-            VADProcessor.from_language("ja", fallback_to_silero=False)
+            ...
 ```
 
 #### 統合テスト (`tests/vad/test_from_language_integration.py`)
@@ -275,16 +260,16 @@ class TestVADProcessorFromLanguageIntegration:
 - [ ] `livecap_core/vad/processor.py`
   - [ ] `from_language()` クラスメソッド追加
   - [ ] `_create_backend()` ヘルパーメソッド追加
-  - [ ] ログ出力追加（選択されたVAD、フォールバック時の警告）
+  - [ ] INFOログ出力追加（選択されたVAD）
 
 - [ ] `livecap_core/vad/__init__.py`
   - [ ] エクスポート確認（変更不要の可能性）
 
 - [ ] `tests/vad/test_processor.py`
   - [ ] `TestVADProcessorFromLanguage` クラス追加
-  - [ ] 正常系テスト（ja, en）
-  - [ ] フォールバックテスト
-  - [ ] 例外テスト
+  - [ ] 正常系テスト（ja → TenVAD, en → WebRTC）
+  - [ ] 未サポート言語でValueErrorテスト
+  - [ ] バックエンド未インストール時のImportErrorテスト
 
 ### Phase 2: 統合テスト (推定: 1h)
 
@@ -300,7 +285,7 @@ class TestVADProcessorFromLanguageIntegration:
   - [ ] `VADProcessor.from_language()` の詳細な使い方
   - [ ] 各言語での推奨VADバックエンドの説明
   - [ ] StreamTranscriberとの統合例（推奨パターン）
-  - [ ] フォールバック動作の説明
+  - [ ] エラー発生時の対処方法（ValueError, ImportError）
   - [ ] 基本サンプルからの参照リンク追加
 
 - [ ] `examples/realtime/custom_vad_config.py` 更新
@@ -322,7 +307,7 @@ class TestVADProcessorFromLanguageIntegration:
 
 **軽減策** (確定):
 - `[vad]` に TenVAD/WebRTC を含める（JaVAD以外は必須）
-- `fallback_to_silero=True` をデフォルトに（万が一の場合）
+- 未インストール時は `ImportError` で明示的にエラー（解決策をエラーメッセージに含める）
 - TenVADのライセンス警告はそのまま出力
 
 ### リスク2: presets.pyの言語カバレッジ
@@ -330,8 +315,8 @@ class TestVADProcessorFromLanguageIntegration:
 **リスク**: ja, en 以外の言語に対するプリセットがない
 
 **軽減策** (確定):
-- 未知の言語はSileroにフォールバック
-- INFOログで通知: "No optimized preset registered for language '{lang}', falling back to Silero"
+- 未サポート言語は `ValueError` で明示的にエラー
+- エラーメッセージに代替手段を提示: "Use VADProcessor() for default Silero VAD"
 - 将来的に他言語のベンチマークを実施してプリセット追加可能
 
 ## 完了条件
@@ -340,8 +325,8 @@ class TestVADProcessorFromLanguageIntegration:
 - [ ] `pyproject.toml` の `[vad]` に TenVAD/WebRTC が含まれている
 - [ ] `VADProcessor.from_language("ja")` で TenVAD が使用される
 - [ ] `VADProcessor.from_language("en")` で WebRTC が使用される
-- [ ] 未サポート言語でINFOログが出力され、Sileroにフォールバック
-- [ ] フォールバック機構が正常に動作する
+- [ ] `VADProcessor.from_language("zh")` で `ValueError` が発生する
+- [ ] VAD未インストール時に `ImportError` が発生する（解決策付きメッセージ）
 - [ ] StreamTranscriberへの`vad_processor`注入で正常動作
 - [ ] 全テストがパス
 - [ ] CI がパス
