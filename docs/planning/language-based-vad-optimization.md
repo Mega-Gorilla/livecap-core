@@ -326,26 +326,6 @@ class TestVADProcessorFromLanguageIntegration:
 - INFOログで通知: "No optimized preset registered for language '{lang}', falling back to Silero"
 - 将来的に他言語のベンチマークを実施してプリセット追加可能
 
-### リスク3: 後方互換性
-
-**リスク**: 既存コードが動作しなくなる
-
-**軽減策**: **解決済み（Option B採用）**
-- StreamTranscriberのAPIは変更なし
-- `VADProcessor.from_language()`は新規追加メソッド
-- 既存の`VADProcessor()`コンストラクタは影響なし
-- 完全な後方互換性を維持
-
-### リスク4: StreamTranscriberとエンジンの言語不一致
-
-**リスク**: VADの言語設定とASRエンジンの対応言語が異なる場合の動作
-
-**軽減策**: **解決済み（Option B採用）**
-- StreamTranscriberには`language`パラメータを追加しない
-- ユーザーが`VADProcessor.from_language()`で明示的にVADを構成
-- VADとエンジンの設定が分離され、ユーザーが意識的に設定
-- 言語不一致の検証は不要（ユーザーの責任）
-
 ## 完了条件
 
 - [ ] `presets.py` のスコアがPhase D-4の結果に更新されている
