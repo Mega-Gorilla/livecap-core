@@ -17,7 +17,7 @@ Status: **IN PROGRESS**
 | 項目 | 決定 | 備考 |
 |------|------|------|
 | TenVADライセンス警告 | そのまま出力 | ライセンス上の重要な警告のため |
-| VADデフォルトインストール | JaVAD以外を`[vad]`に含める | 言語別VAD最適化の前提条件 |
+| VADデフォルトインストール | JaVAD以外をデフォルト依存関係に含める | 言語別VAD最適化の前提条件 |
 | 未サポート言語 | **ValueError例外をraise** | サポート言語: ja, en のみ。他言語は`VADProcessor()`を使用 |
 | フォールバック機構 | **廃止** | `fallback_to_silero`パラメータは実装しない。明示的なエラーを優先 |
 | APIの公開範囲 | 追加エクスポート不要 | `VADProcessor`は既にエクスポート済み |
@@ -324,8 +324,7 @@ class TestVADProcessorFromLanguageIntegration:
 **リスク**: TenVAD (`ten-vad`) や WebRTC (`webrtcvad`) がインストールされていない環境でのエラー
 
 **軽減策** (確定):
-- `[vad]` に TenVAD/WebRTC を含める（JaVAD以外は必須）
-- 未インストール時は `ImportError` で明示的にエラー（解決策をエラーメッセージに含める）
+- TenVAD/WebRTC をデフォルト依存関係に含める（JaVAD以外は必須）
 - TenVADのライセンス警告はそのまま出力
 
 ### リスク2: presets.pyの言語カバレッジ
@@ -340,7 +339,7 @@ class TestVADProcessorFromLanguageIntegration:
 ## 完了条件
 
 - [x] `presets.py` のスコアがPhase D-4の結果に更新されている (Phase 0)
-- [x] `pyproject.toml` の `[vad]` に TenVAD/WebRTC が含まれている (Phase 0)
+- [x] `pyproject.toml` のデフォルト依存関係に TenVAD/WebRTC が含まれている (Phase 0, PR #145)
 - [ ] `VADProcessor.from_language("ja")` で TenVAD が使用される (Phase 1)
 - [ ] `VADProcessor.from_language("en")` で WebRTC が使用される (Phase 1)
 - [ ] `VADProcessor.from_language("zh")` で `ValueError` が発生する (Phase 1)
@@ -443,8 +442,8 @@ VAD_OPTIMIZED_PRESETS = {
   - [x] metadata.score をPhase D-4の結果で更新
   - [x] コメントに測定条件を追記（standard mode, parakeet系エンジン）
 - [x] `pyproject.toml` VAD依存関係の更新
-  - [x] `[vad]` に webrtcvad, ten-vad を追加（JaVAD以外を必須化）
-  - [x] `[vad-javad]` を維持（オプショナル）
+  - [x] silero-vad, webrtcvad, ten-vad をデフォルト依存関係に移動（PR #145 で更新）
+  - [x] javad を `benchmark` / `optimization` extras に統合
   - [x] libc++要件をコメントで追記
 - [x] `.github/workflows/core-tests.yml`
   - [x] libc++1インストールステップ追加（TenVADテストを有効化）
@@ -456,7 +455,7 @@ VAD_OPTIMIZED_PRESETS = {
 - [x] 動作確認
   - [x] `get_best_vad_for_language("ja")` → tenvad
   - [x] `get_best_vad_for_language("en")` → webrtc
-  - [x] `uv sync --extra vad` で TenVAD/WebRTC がインストールされる
+  - [x] `uv sync` で TenVAD/WebRTC がインストールされる（デフォルト依存）
   - [x] CIでTenVADテストが実行される（OSErrorスキップではなく実際にテスト）
 
 ## 参考
