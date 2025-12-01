@@ -73,7 +73,7 @@ uv run python -m pytest tests/core/engines
 
 ## Integration Tests と FFmpeg セットアップ
 
-`tests/integration/` はデフォルトの `pytest tests` に含まれます。多くはスタブ FFmpeg を使いますが、Issue #21 由来の MKV 抽出リグレッションは実 FFmpeg を要求します。
+`tests/integration/` はデフォルトの `pytest tests` に含まれます。多くはスタブ FFmpeg を使いますが、MKV 抽出テストは実 FFmpeg を要求します。
 
 実 FFmpeg を使う場合:
 
@@ -150,7 +150,7 @@ CI ワークフローはこれらのパスを環境変数（`UV_CACHE_DIR`, `LIV
     *   Windows: Whisper, Parakeet, ReazonSpeech。
 *   **条件**: レポジトリ変数 `LIVECAP_ENABLE_GPU_SMOKE=1` が必要。
 
-### 4. `realtime-e2e`（Phase 1）
+### 4. `realtime-e2e`
 *   **目的**: SileroVAD + 実 ASR エンジンを使用したリアルタイム文字起こしの E2E テスト。
 *   **対象**: `tests/integration/realtime/test_e2e_realtime_flow.py` (`-m "realtime_e2e"`).
 *   **環境**: Self-hosted Runners (Linux/Windows)。
