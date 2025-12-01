@@ -33,6 +33,13 @@ jobs:
         with:
           python-version: "3.11"
 
+      # Install libc++ for TenVAD on Ubuntu
+      - name: Install libc++ (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libc++1
+
       - name: Set up uv
         uses: astral-sh/setup-uv@v3
 
