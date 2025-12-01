@@ -153,6 +153,43 @@ transcriber.close()
 
 ## VAD 設定
 
+### VADProcessor の概要
+
+`VADProcessor` は音声活動検出（Voice Activity Detection）を行うクラスです。以下の方法で設定できます：
+
+| 方法 | 用途 | コード例 |
+|------|------|---------|
+| `from_language()` | 言語に最適化（推奨） | `VADProcessor.from_language("ja")` |
+| デフォルト | 汎用（Silero VAD） | `VADProcessor()` |
+| `config=` | パラメータ調整 | `VADProcessor(config=VADConfig(...))` |
+| `backend=` | バックエンド指定 | `VADProcessor(backend=WebRTCVAD(...))` |
+| 組み合わせ | 完全カスタマイズ | `VADProcessor(config=..., backend=...)` |
+
+```python
+from livecap_core import VADProcessor, VADConfig
+from livecap_core.vad.backends import WebRTCVAD, TenVAD
+
+# 言語に最適化（推奨）
+vad = VADProcessor.from_language("ja")  # 日本語 → TenVAD
+
+# デフォルト（Silero VAD）
+vad = VADProcessor()
+
+# パラメータ調整
+vad = VADProcessor(config=VADConfig(threshold=0.7, min_speech_ms=300))
+
+# バックエンド指定
+vad = VADProcessor(backend=WebRTCVAD(mode=3))
+
+# 完全カスタマイズ
+vad = VADProcessor(
+    config=VADConfig(min_speech_ms=300, min_silence_ms=150),
+    backend=WebRTCVAD(mode=1),
+)
+```
+
+---
+
 ### 言語別 VAD 最適化（推奨）
 
 `VADProcessor.from_language()` を使うと、ベンチマーク結果に基づいて言語に最適な VAD バックエンドとパラメータが自動選択されます。
@@ -220,14 +257,56 @@ with warnings.catch_warnings():
 
 ---
 
-### デフォルト設定（Silero VAD）
+### バックエンドの選択
 
-言語最適化を使わない場合、デフォルトで Silero VAD が使用されます。
+3 種類の VAD バックエンドから選択できます。
+
+| バックエンド | 特徴 | 推奨用途 |
+|-------------|------|---------|
+| `SileroVAD` | 高精度、ニューラルネット | 汎用（デフォルト） |
+| `WebRTCVAD` | 高速、低メモリ | 英語、リソース制約環境 |
+| `TenVAD` | 日本語向け高精度 | 日本語 |
+
+```python
+from livecap_core import VADProcessor
+from livecap_core.vad.backends import SileroVAD, WebRTCVAD, TenVAD
+
+# Silero VAD（デフォルト）
+vad = VADProcessor()  # または VADProcessor(backend=SileroVAD())
+
+# WebRTC VAD
+vad = VADProcessor(backend=WebRTCVAD(mode=3, frame_duration_ms=30))
+
+# TenVAD
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", UserWarning)
+    vad = VADProcessor(backend=TenVAD(hop_size=256))
+```
+
+#### バックエンド固有パラメータ
+
+| バックエンド | パラメータ | 説明 |
+|-------------|-----------|------|
+| `SileroVAD` | `threshold` | 音声検出閾値（0.0-1.0） |
+| `SileroVAD` | `onnx` | ONNX モデル使用（デフォルト: True） |
+| `WebRTCVAD` | `mode` | 攻撃性（0=緩, 3=厳格） |
+| `WebRTCVAD` | `frame_duration_ms` | フレーム長（10, 20, 30ms） |
+| `TenVAD` | `hop_size` | フレームホップサイズ |
+
+> **Note**: 詳細は [VAD バックエンド比較](../reference/vad-comparison.md) を参照してください。
+
+---
+
+### パラメータのカスタマイズ
+
+`VADConfig` でセグメント検出のパラメータを調整できます。
+
+#### デフォルト値
 
 ```python
 from livecap_core import VADConfig
 
-# デフォルト値
 config = VADConfig()
 print(config.threshold)        # 0.5  - 音声検出閾値
 print(config.min_speech_ms)    # 250  - 最小音声継続時間（ms）
@@ -235,64 +314,29 @@ print(config.min_silence_ms)   # 100  - 無音判定時間（ms）
 print(config.speech_pad_ms)    # 100  - 発話前後のパディング（ms）
 ```
 
-### カスタム設定
+#### 環境別の設定例
 
 ```python
-from livecap_core import StreamTranscriber, VADConfig
+from livecap_core import VADProcessor, VADConfig
 
-# 厳しめの設定（ノイズ環境向け）
-strict_config = VADConfig(
+# ノイズ環境向け（厳しめ）
+noisy_config = VADConfig(
     threshold=0.7,           # 高めの閾値
     min_speech_ms=300,       # 長めの最小音声時間
     min_silence_ms=200,      # 長めの無音判定時間
 )
+vad = VADProcessor(config=noisy_config)
 
-transcriber = StreamTranscriber(
-    engine=engine,
-    vad_config=strict_config,
-)
-
-# 緩めの設定（静かな環境向け）
-relaxed_config = VADConfig(
+# 静かな環境向け（緩め）
+quiet_config = VADConfig(
     threshold=0.3,           # 低めの閾値
     min_speech_ms=150,       # 短めの最小音声時間
     min_silence_ms=80,       # 短めの無音判定時間
 )
+vad = VADProcessor(config=quiet_config)
 ```
 
-### 別のバックエンドを使用
-
-Silero VAD 以外のバックエンドを手動で指定できます。
-
-```python
-from livecap_core import VADProcessor, VADConfig
-from livecap_core.vad.backends import WebRTCVAD, TenVAD
-
-# WebRTC VAD（高速、低メモリ）
-processor = VADProcessor(backend=WebRTCVAD(mode=3, frame_duration_ms=30))
-
-# TenVAD（日本語向け、高精度）
-import warnings
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore", UserWarning)  # ライセンス警告を抑制
-    processor = VADProcessor(backend=TenVAD(hop_size=256))
-
-# バックエンド + カスタム VADConfig の組み合わせ
-config = VADConfig(min_speech_ms=300, min_silence_ms=150)
-processor = VADProcessor(config=config, backend=WebRTCVAD(mode=1))
-```
-
-#### バックエンド比較
-
-| バックエンド | 特徴 | パラメータ |
-|-------------|------|-----------|
-| `SileroVAD` | 高精度、ニューラルネット | `threshold`, `onnx` |
-| `WebRTCVAD` | 高速、低メモリ | `mode` (0-3), `frame_duration_ms` |
-| `TenVAD` | 日本語向け高精度 | `hop_size` |
-
-> **Note**: 詳細は [VAD バックエンド比較](../reference/vad-comparison.md) を参照してください。
-
-### 中間結果の設定
+#### 中間結果の設定
 
 長い発話中に途中経過を受け取りたい場合：
 
