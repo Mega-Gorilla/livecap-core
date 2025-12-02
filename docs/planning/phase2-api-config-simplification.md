@@ -97,12 +97,14 @@ config/                              # 完全削除
 ├── __init__.py
 └── core_config_builder.py
 
-livecap_core/config/                 # 大部分を削除
-├── __init__.py                      # 簡素化
+livecap_core/config/                 # 完全削除（ディレクトリごと）
+├── __init__.py                      # 削除
 ├── defaults.py                      # 削除
 ├── schema.py                        # 削除
 └── validator.py                     # 削除
 ```
+
+> **注意**: `livecap_core/config/` は完全削除が可能。VADConfig は `livecap_core/vad/config.py` に定義されており、別ディレクトリのため影響なし。削除前に Section 10.2 の更新対象ファイルを先に修正する必要がある。
 
 ---
 
@@ -273,13 +275,47 @@ engine = EngineFactory.create_engine("reazonspeech", device="cuda", use_int8=Tru
 
 **ファイル:** `engines/metadata.py`
 
-現在 `_configure_engine_specific_settings()` や `create_engine()` 内でハードコードされているパラメータを `default_params` に移動：
+##### パラメータの分類方針
 
-| エンジン | 追加するパラメータ |
-|----------|-------------------|
-| `reazonspeech` | `use_int8: False`, `num_threads: 4`, `decoding_method: "greedy_search"` |
-| `parakeet` | `model_name: "nvidia/parakeet-tdt-0.6b-v3"` |
-| `voxtral` | `model_name: "mistralai/Voxtral-Mini-3B-2507"` |
+調査の結果、エンジンパラメータを以下の3カテゴリに分類して管理する：
+
+| カテゴリ | 定義 | 対応方針 |
+|---------|------|---------|
+| **A: ユーザー向け** | 一般ユーザーが変更する可能性が高い | `default_params` に追加 |
+| **B: 内部詳細** | エンジン固有の実装詳細 | エンジンクラス内でハードコード維持 |
+| **C: 上級者向け** | 特殊なケースでのみ変更 | `**kwargs` 経由で上書き可能 |
+
+##### カテゴリA: `default_params` に追加するパラメータ
+
+| エンジン | パラメータ | 型 | デフォルト値 | 備考 |
+|---------|-----------|-----|-------------|------|
+| **reazonspeech** | `use_int8` | bool | `False` | int8量子化 |
+| | `num_threads` | int | `4` | 処理スレッド数 |
+| | `decoding_method` | str | `"greedy_search"` | デコード方式 |
+| **whispers2t_*** | `batch_size` | int | `24` | バッチサイズ |
+| | `use_vad` | bool | `True` | 内蔵VAD |
+| **canary** | `model_name` | str | `"nvidia/canary-1b-v2"` | モデル名 |
+| | `beam_size` | int | `1` | ビームサーチ |
+| **parakeet** | `model_name` | str | `"nvidia/parakeet-tdt-0.6b-v3"` | モデル名 |
+| | `decoding_strategy` | str | `"greedy"` | デコード戦略 |
+| **parakeet_ja** | `decoding_strategy` | str | `"greedy"` | デコード戦略 |
+| **voxtral** | `model_name` | str | `"mistralai/Voxtral-Mini-3B-2507"` | モデル名 |
+
+##### カテゴリB: エンジン内部に維持（`**kwargs` で上書き可能）
+
+ReazonSpeech 固有の音声処理パラメータ。99%のユーザーは変更不要だが、上級者は `**kwargs` 経由で上書き可能：
+
+| パラメータ | 型 | デフォルト値 | 用途 |
+|-----------|-----|-------------|------|
+| `auto_split_duration` | float | `30.0` | 長音声の自動分割時間 |
+| `padding_duration` | float | `0.9` | パディング時間 |
+| `padding_threshold` | float | `5.0` | パディング閾値 |
+| `min_audio_duration` | float | `0.3` | 最小音声長 |
+| `short_audio_duration` | float | `1.0` | 短い音声の閾値 |
+| `extended_padding_duration` | float | `2.0` | 拡張パディング |
+| `decode_timeout` | float | `5.0` | デコードタイムアウト |
+
+##### 更新後の `EngineMetadata.default_params`
 
 ```python
 # engines/metadata.py - 更新後
@@ -297,6 +333,21 @@ engine = EngineFactory.create_engine("reazonspeech", device="cuda", use_int8=Tru
     ...
     default_params={
         "model_name": "nvidia/parakeet-tdt-0.6b-v3",
+        "decoding_strategy": "greedy",
+    }
+),
+"parakeet_ja": EngineInfo(
+    ...
+    default_params={
+        "model_name": "nvidia/parakeet-tdt_ctc-0.6b-ja",
+        "decoding_strategy": "greedy",
+    }
+),
+"canary": EngineInfo(
+    ...
+    default_params={
+        "model_name": "nvidia/canary-1b-v2",
+        "beam_size": 1,
     }
 ),
 "voxtral": EngineInfo(
@@ -308,12 +359,22 @@ engine = EngineFactory.create_engine("reazonspeech", device="cuda", use_int8=Tru
         "model_name": "mistralai/Voxtral-Mini-3B-2507",
     }
 ),
+"whispers2t_base": EngineInfo(
+    ...
+    default_params={
+        "model_size": "base",
+        "batch_size": 24,
+        "use_vad": True,
+    }
+),
+# whispers2t_tiny, whispers2t_small, whispers2t_medium, whispers2t_large_v3 も同様に更新
 ```
 
 > **設計原則**: `EngineMetadata.default_params` がエンジン固有パラメータの**唯一の定義場所**とする。これにより：
 > - 単一の真実の源 (Single Source of Truth) を実現
 > - 新エンジン追加時は `metadata.py` のみを更新
 > - `EngineMetadata.get_all()` でデフォルトパラメータを一覧表示可能
+> - カテゴリBは `default_params` に含めず、必要時のみ `**kwargs` で上書き
 
 #### Task 1.4: 各エンジンクラスの `__init__` 修正
 
@@ -330,11 +391,14 @@ engine = EngineFactory.create_engine("reazonspeech", device="cuda", use_int8=Tru
 
 | エンジン | 現在の `__init__` | 修正後 |
 |----------|-------------------|--------|
-| WhisperS2TEngine | `(device, config)` | `(device, language="ja", use_vad=True, model_size="base", **kwargs)` |
-| CanaryEngine | `(device, config)` | `(device, language="en", **kwargs)` |
+| WhisperS2TEngine | `(device, config)` | `(device, language="ja", use_vad=True, model_size="base", batch_size=24, **kwargs)` |
+| CanaryEngine | `(device, config)` | `(device, language="en", model_name=..., beam_size=1, **kwargs)` |
 | VoxtralEngine | `(device, config)` | `(device, language="auto", model_name=..., **kwargs)` |
 | ReazonSpeechEngine | `(device, config)` | `(device, use_int8=False, num_threads=4, decoding_method="greedy_search", **kwargs)` |
-| ParakeetEngine | `(device, config)` | `(device, model_name=..., **kwargs)` |
+| ParakeetEngine | `(device, config)` | `(device, model_name=..., decoding_strategy="greedy", **kwargs)` |
+
+> **`**kwargs` の役割**: カテゴリB（内部詳細）パラメータを受け取るため。
+> 例: ReazonSpeechEngine で `decode_timeout=10.0` を上書きしたい場合、`**kwargs` 経由で渡す。
 
 **コード例（WhisperS2TEngine）:**
 
@@ -558,6 +622,7 @@ Step 8: 全テスト実行・確認
 |----------|------|
 | `config/__init__.py` | Config 廃止 |
 | `config/core_config_builder.py` | Config 廃止 |
+| `livecap_core/config/__init__.py` | Config 廃止（VADConfig は `livecap_core/vad/config.py` のため影響なし） |
 | `livecap_core/config/defaults.py` | Config 廃止 |
 | `livecap_core/config/schema.py` | Config 廃止 |
 | `livecap_core/config/validator.py` | Config 廃止 |
@@ -607,6 +672,7 @@ Config 廃止に伴い削除するファイル。これらは他から参照さ�
 |----------|------|
 | `config/__init__.py` | Config 廃止 |
 | `config/core_config_builder.py` | Config 廃止 |
+| `livecap_core/config/__init__.py` | Config 廃止（VADConfig は `livecap_core/vad/config.py` のため影響なし） |
 | `livecap_core/config/defaults.py` | Config 廃止 |
 | `livecap_core/config/schema.py` | Config 廃止 |
 | `livecap_core/config/validator.py` | Config 廃止 |
@@ -658,7 +724,7 @@ Grep で検出されたが、実際には影響がない箇所。
 
 ### 10.4 評価サマリー
 
-- **削除ファイル**: 7 ファイル
+- **削除ファイル**: 8 ファイル（`livecap_core/config/__init__.py` 追加）
 - **更新ファイル（コード）**: 15 ファイル（エンジンクラス 5 ファイル追加）
 - **更新ファイル（ドキュメント）**: 6 ファイル
 - **影響範囲**: 中程度、エンジンクラス修正が追加で必要
@@ -679,3 +745,5 @@ Grep で検出されたが、実際には影響がない箇所。
 | 2025-12-02 | Task 1.3 追加: `EngineMetadata.default_params` 拡充、設計原則を明記 |
 | 2025-12-02 | Task 1.4 追加: 各エンジンクラスの `__init__` 修正（`language` パラメータ対応） |
 | 2025-12-02 | Task 3.1 更新: benchmarks の `**engine_options` 対応、影響調査結果を更新 |
+| 2025-12-02 | Task 1.3 拡充: パラメータ3カテゴリ分類（A:ユーザー向け、B:内部詳細、C:上級者向け）を追加 |
+| 2025-12-02 | 全エンジンの `default_params` 追加パラメータを網羅（WhisperS2T: batch_size/use_vad、Canary: model_name/beam_size、Parakeet: decoding_strategy） |
