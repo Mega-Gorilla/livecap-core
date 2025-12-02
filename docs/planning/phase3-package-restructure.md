@@ -149,10 +149,12 @@ livecap-core/
 |----------|----------|
 | `README.md` | インポート例の更新 |
 | `CLAUDE.md` | エンジン使用例の更新 |
+| `AGENTS.md` | engines/ への参照を更新 |
 | `docs/architecture/core-api-spec.md` | API 仕様のインポートパス更新 |
-| `docs/guides/realtime-transcription.md` | 使用例の更新 |
+| `docs/guides/realtime-transcription.md` | 使用例の更新（5箇所） |
 | `docs/guides/benchmark/asr-benchmark.md` | ベンチマーク使用例の更新 |
-| `docs/reference/feature-inventory.md` | 機能一覧の更新 |
+| `docs/reference/feature-inventory.md` | 機能一覧の更新（5箇所） |
+| `docs/reference/vad/config.md` | インポート例の更新 |
 
 #### CI/CD
 
@@ -284,7 +286,15 @@ __all__ = [
 
 ### 4.4 Task 4: pyproject.toml の更新
 
+`engines*` と `config*` を削除（config/ は Phase 2 で削除済み）:
+
 ```toml
+# Before
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["livecap_core*", "engines*", "config*", "benchmarks*"]
+
+# After
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["livecap_core*", "benchmarks*"]
@@ -418,6 +428,23 @@ Step 10: PR 作成・レビュー・マージ
 | CI 失敗 | 中 | ローカルで全テスト実行後に PR 作成 |
 | ベンチマーク動作不良 | 低 | ベンチマーク実行確認を検証項目に含む |
 
+### 8.1 設計決定: TranscriptionEngine の重複について
+
+`benchmarks/common/engines.py` と `livecap_core/transcription/stream.py` に同名の `TranscriptionEngine` Protocol が存在する。
+
+| 定義場所 | メソッド |
+|----------|----------|
+| `livecap_core` | `transcribe`, `get_required_sample_rate` (2メソッド) |
+| `benchmarks` | 上記 + `get_engine_name`, `cleanup` (4メソッド) |
+
+**決定: そのまま維持（統一しない）**
+
+理由:
+1. benchmarks 固有の追加要件（エンジン名取得、リソース解放）がある
+2. benchmarks は独立したツールパッケージとして設計されている
+3. Phase 3 は「パッケージ構造整理」であり、API 統一は scope 外
+4. 両方とも Protocol（構造的部分型）であり、実装に影響しない
+
 ---
 
 ## 9. 後方互換性
@@ -452,3 +479,4 @@ from livecap_core.engines.metadata import EngineMetadata
 |------|----------|
 | 2025-12-02 | 初版作成 |
 | 2025-12-02 | 不明点・問題点の解決: TranscriptionEngine バグ修正追記、手動修正箇所の明記、EngineInfo エクスポート追加、GEMINI.md 削除 |
+| 2025-12-02 | レビュー対応: ドキュメント影響範囲拡充（AGENTS.md, vad/config.md追加）、pyproject.toml の config* 削除を明記、TranscriptionEngine 重複の設計決定追記 |
