@@ -402,10 +402,12 @@ class BaseEngine(ABC):
 class BaseEngine(ABC):
     def __init__(self, device: Optional[str] = None, **kwargs):
         self.device = device
-        # self.config は廃止（後方互換性のため空 dict を維持するか、完全削除）
+        # self.config は完全削除（後方互換性は無視）
         # 各エンジンは kwargs から必要なパラメータを取り出す
 ```
 
+> **設計決定**: `self.config` は**完全削除**する（後方互換性は無視して良いため）。
+>
 > **移行順序**: 子クラス（各エンジン）を先に修正し、最後に BaseEngine を修正することで段階的に移行可能。
 
 ##### 各エンジンクラスの修正
@@ -568,6 +570,28 @@ engine = EngineFactory.create_engine(engine_type, device=device)
 - `tests/core/engines/test_engine_factory.py`
 - `tests/integration/engines/test_smoke_engines.py`
 
+**新規テスト（追加）:**
+
+```python
+# tests/core/engines/test_engine_factory.py に追加
+
+def test_create_engine_auto_raises_error():
+    """engine_type='auto' が ValueError を発生させることを確認"""
+    with pytest.raises(ValueError, match="deprecated"):
+        EngineFactory.create_engine("auto", device="cuda")
+
+def test_create_engine_with_kwargs():
+    """**engine_options が正しくマージされることを確認"""
+    engine = EngineFactory.create_engine("reazonspeech", device="cpu", use_int8=True)
+    assert engine.use_int8 == True
+
+def test_create_engine_default_params_applied():
+    """EngineMetadata.default_params がデフォルト適用されることを確認"""
+    engine = EngineFactory.create_engine("reazonspeech", device="cpu")
+    assert engine.use_int8 == False  # default_params のデフォルト値
+    assert engine.num_threads == 4
+```
+
 **CI の更新（同一 PR で実施）:**
 - `.github/workflows/integration-tests.yml`
   - `from livecap_core.config.defaults import get_default_config` を削除
@@ -586,6 +610,20 @@ engine = EngineFactory.create_engine(engine_type, device=device)
 #### Task 4.2: engines/*.py
 
 各エンジンの `config` パラメータ使用状況を確認し、必要に応じて更新。
+
+#### Task 4.3: engines/__init__.py のエクスポート更新
+
+**ファイル:** `engines/__init__.py`
+
+`EngineMetadata` を公開 API としてエクスポート（`get_engines_for_language()` を使用するため）：
+
+```python
+# engines/__init__.py
+from .metadata import EngineMetadata
+from .engine_factory import EngineFactory
+
+__all__ = ["EngineFactory", "EngineMetadata", ...]
+```
 
 ---
 
@@ -820,3 +858,4 @@ Grep で検出されたが、実際には影響がない箇所。
 | 2025-12-02 | Task 1.3 拡充: パラメータ3カテゴリ分類（A:ユーザー向け、B:内部詳細、C:上級者向け）を追加 |
 | 2025-12-02 | 全エンジンの `default_params` 追加パラメータを網羅（WhisperS2T: batch_size/use_vad、Canary: model_name/beam_size、Parakeet: decoding_strategy） |
 | 2025-12-02 | **実装前最終レビュー完了**: Step 細分化（1a/1b/1c）、BaseEngine 修正追加、CI 同一 PR 対応、CHANGELOG 記載追加 |
+| 2025-12-02 | 追加詳細: 新規テスト例（Task 3.4）、engines/__init__.py エクスポート（Task 4.3）、self.config 完全削除を明記 |
