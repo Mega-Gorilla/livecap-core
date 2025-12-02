@@ -156,14 +156,15 @@ livecap-core/
 | `docs/reference/feature-inventory.md` | 機能一覧の更新（5箇所） |
 | `docs/reference/vad/config.md` | インポート例の更新 |
 
-#### CI/CD
+#### CI/CD（手動更新: 5箇所）
 
-| ファイル | 更新内容 |
-|----------|----------|
-| `.github/workflows/core-tests.yml` | インポートパス確認 |
-| `.github/workflows/integration-tests.yml` | インポートパス確認 |
-| `.github/workflows/benchmark-asr.yml` | ベンチマーク実行確認 |
-| `.github/workflows/benchmark-vad.yml` | ベンチマーク実行確認 |
+| ファイル | 行番号 | 更新内容 |
+|----------|--------|----------|
+| `.github/workflows/integration-tests.yml` | 155, 346, 409 | `from engines.engine_factory` → `from livecap_core.engines` |
+| `.github/workflows/benchmark-asr.yml` | 186 | `from engines.metadata` → `from livecap_core.engines` |
+| `.github/workflows/benchmark-vad.yml` | 210 | `from engines.metadata` → `from livecap_core.engines` |
+
+> Note: `.github/workflows/core-tests.yml` には `from engines` パターンがないため更新不要。
 
 #### アーカイブ（更新不要）
 
@@ -480,3 +481,4 @@ from livecap_core.engines.metadata import EngineMetadata
 | 2025-12-02 | 初版作成 |
 | 2025-12-02 | 不明点・問題点の解決: TranscriptionEngine バグ修正追記、手動修正箇所の明記、EngineInfo エクスポート追加、GEMINI.md 削除 |
 | 2025-12-02 | レビュー対応: ドキュメント影響範囲拡充（AGENTS.md, vad/config.md追加）、pyproject.toml の config* 削除を明記、TranscriptionEngine 重複の設計決定追記 |
+| 2025-12-02 | CI/CD 更新箇所を具体化（行番号追記、core-tests.yml は更新不要と明記） |
