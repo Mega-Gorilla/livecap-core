@@ -376,16 +376,39 @@ ReazonSpeech 固有の音声処理パラメータ。99%のユーザーは変更�
 > - `EngineMetadata.get_all()` でデフォルトパラメータを一覧表示可能
 > - カテゴリBは `default_params` に含めず、必要時のみ `**kwargs` で上書き
 
-#### Task 1.4: 各エンジンクラスの `__init__` 修正
+#### Task 1.4: BaseEngine + 各エンジンクラスの `__init__` 修正
 
 **背景**: 現在のエンジンは `config["transcription"]["input_language"]` から言語を取得している。Config 廃止後は `**engine_options` で直接パラメータを受け取る必要がある。
 
 **影響ファイル:**
+- `engines/base_engine.py` ← **BaseEngine の修正（重要）**
 - `engines/whispers2t_engine.py`
 - `engines/canary_engine.py`
 - `engines/voxtral_engine.py`
 - `engines/reazonspeech_engine.py`
 - `engines/parakeet_engine.py`
+
+##### BaseEngine の修正
+
+```python
+# Before
+class BaseEngine(ABC):
+    def __init__(self, device: Optional[str] = None, config: Optional[Dict[str, Any]] = None):
+        self.device = device
+        self.config = config or {}
+        # ... config.get('engines', {}) で設定を取得
+
+# After
+class BaseEngine(ABC):
+    def __init__(self, device: Optional[str] = None, **kwargs):
+        self.device = device
+        # self.config は廃止（後方互換性のため空 dict を維持するか、完全削除）
+        # 各エンジンは kwargs から必要なパラメータを取り出す
+```
+
+> **移行順序**: 子クラス（各エンジン）を先に修正し、最後に BaseEngine を修正することで段階的に移行可能。
+
+##### 各エンジンクラスの修正
 
 **変更内容:**
 
@@ -535,7 +558,7 @@ engine = EngineFactory.create_engine(engine_type, device=device)
 - `--info` に置き換え（FFmpeg, モデルパス等の情報表示）
 - `ConfigValidator` の使用を削除
 
-#### Task 3.4: テストの更新
+#### Task 3.4: テスト・CI の更新
 
 **削除テスト:**
 - `tests/core/config/test_config_defaults.py`
@@ -544,6 +567,13 @@ engine = EngineFactory.create_engine(engine_type, device=device)
 **更新テスト:**
 - `tests/core/engines/test_engine_factory.py`
 - `tests/integration/engines/test_smoke_engines.py`
+
+**CI の更新（同一 PR で実施）:**
+- `.github/workflows/integration-tests.yml`
+  - `from livecap_core.config.defaults import get_default_config` を削除
+  - 直接パラメータ指定に変更
+
+> **重要**: コード変更と CI 更新を同一 PR で実施すること。別 PR にするとマージ順序によって CI が壊れる期間が発生する。
 
 ### 4.4 その他の影響コード
 
@@ -562,15 +592,24 @@ engine = EngineFactory.create_engine(engine_type, device=device)
 ## 5. 移行手順
 
 ```
-Step 1: EngineFactory のリファクタリング
+Step 1a: EngineMetadata.default_params の拡充 (Task 1.3)
+         → 他への影響なし、単独でテスト可能
     ↓
-Step 2: benchmarks/common/engines.py の更新
+Step 1b: BaseEngine + 各エンジンクラスの __init__ 修正 (Task 1.4)
+         → config 依存を削除、**kwargs 対応
     ↓
-Step 3: Examples の更新
+Step 1c: EngineFactory の簡素化 (Task 1.1-1.2)
+         → Step 1a, 1b に依存
     ↓
-Step 4: CLI の更新（--dump-config 削除）
+Step 2: benchmarks/common/engines.py の更新 (Task 3.1)
     ↓
-Step 5: テストの削除・更新
+Step 3: Examples の更新 (Task 3.2)
+    ↓
+Step 4: CLI の更新 (Task 3.3)
+         → --dump-config 削除、--info 追加
+    ↓
+Step 5: テスト・CI の更新 (Task 3.4)
+         → CI (.github/workflows/) も同一 PR で更新
     ↓
 Step 6: config/ ディレクトリの削除
     ↓
@@ -660,6 +699,39 @@ Step 8: 全テスト実行・確認
 | テスト失敗 | 中 | 段階的に実行、各ステップで確認 |
 | Examples 動作不良 | 低 | 全 Examples の動作確認を検証項目に含む |
 
+### 9.1 後方互換性と CHANGELOG
+
+Phase 2 は**破壊的変更**を含む。CHANGELOG に以下を記載すること：
+
+#### Breaking Changes
+
+```markdown
+## [UNRELEASED] - Phase 2: Config 廃止
+
+### Breaking Changes
+
+- **`engine_type="auto"` 廃止**: `EngineFactory.create_engine()` で `engine_type="auto"` を指定すると `ValueError` が発生します。`EngineMetadata.get_engines_for_language()` を使用して利用可能なエンジンを確認してください。
+
+- **`livecap_core.config` モジュール削除**: 以下のインポートは動作しなくなります：
+  - `from livecap_core.config import get_default_config`
+  - `from livecap_core.config import merge_config`
+  - `from livecap_core.config import ConfigValidator`
+
+- **エンジン `__init__` シグネチャ変更**: 全エンジンの `__init__` が `(device, config)` から `(device, **kwargs)` に変更されます。
+
+### Migration Guide
+
+# Before
+engine = EngineFactory.create_engine("auto", device="cuda", config=my_config)
+
+# After
+from engines.metadata import EngineMetadata
+engines = EngineMetadata.get_engines_for_language("ja")  # → ["reazonspeech", ...]
+engine = EngineFactory.create_engine("reazonspeech", device="cuda")
+```
+
+> **注意**: livecap-core は内部ライブラリのため、Migration Guide は簡潔で十分。エラーメッセージで移行先を案内する。
+
 ---
 
 ## 10. 影響調査結果
@@ -747,3 +819,4 @@ Grep で検出されたが、実際には影響がない箇所。
 | 2025-12-02 | Task 3.1 更新: benchmarks の `**engine_options` 対応、影響調査結果を更新 |
 | 2025-12-02 | Task 1.3 拡充: パラメータ3カテゴリ分類（A:ユーザー向け、B:内部詳細、C:上級者向け）を追加 |
 | 2025-12-02 | 全エンジンの `default_params` 追加パラメータを網羅（WhisperS2T: batch_size/use_vad、Canary: model_name/beam_size、Parakeet: decoding_strategy） |
+| 2025-12-02 | **実装前最終レビュー完了**: Step 細分化（1a/1b/1c）、BaseEngine 修正追加、CI 同一 PR 対応、CHANGELOG 記載追加 |
