@@ -297,6 +297,63 @@ engine = EngineFactory.create_engine("reazonspeech", device="cuda", use_int8=Tru
 > - 新エンジン追加時は `metadata.py` のみを更新
 > - `EngineMetadata.get_all()` でデフォルトパラメータを一覧表示可能
 
+#### Task 1.4: 各エンジンクラスの `__init__` 修正
+
+**背景**: 現在のエンジンは `config["transcription"]["input_language"]` から言語を取得している。Config 廃止後は `**engine_options` で直接パラメータを受け取る必要がある。
+
+**影響ファイル:**
+- `engines/whispers2t_engine.py`
+- `engines/canary_engine.py`
+- `engines/voxtral_engine.py`
+- `engines/reazonspeech_engine.py`
+- `engines/parakeet_engine.py`
+
+**変更内容:**
+
+| エンジン | 現在の `__init__` | 修正後 |
+|----------|-------------------|--------|
+| WhisperS2TEngine | `(device, config)` | `(device, language="ja", use_vad=True, model_size="base", **kwargs)` |
+| CanaryEngine | `(device, config)` | `(device, language="en", **kwargs)` |
+| VoxtralEngine | `(device, config)` | `(device, language="auto", model_name=..., **kwargs)` |
+| ReazonSpeechEngine | `(device, config)` | `(device, use_int8=False, num_threads=4, decoding_method="greedy_search", **kwargs)` |
+| ParakeetEngine | `(device, config)` | `(device, model_name=..., **kwargs)` |
+
+**コード例（WhisperS2TEngine）:**
+
+```python
+# Before
+class WhisperS2TEngine(BaseEngine):
+    def __init__(self, device=None, config=None):
+        self.config = config or {}
+        model_size = self.config.get('whispers2t', {}).get('model_size', 'base')
+        ...
+
+    def transcribe(self, audio_data, sample_rate):
+        input_language = self.config.get('transcription', {}).get('input_language', 'ja')
+        ...
+
+# After
+class WhisperS2TEngine(BaseEngine):
+    def __init__(
+        self,
+        device: str | None = None,
+        language: str = "ja",
+        use_vad: bool = True,
+        model_size: str = "base",
+        **kwargs,
+    ):
+        self.language = language
+        self.use_vad = use_vad
+        self.model_size = model_size
+        ...
+
+    def transcribe(self, audio_data, sample_rate):
+        input_language = self.language  # self.config ではなく self.language を使用
+        ...
+```
+
+> **注意**: `**kwargs` を受け取ることで、`EngineMetadata.default_params` からの追加パラメータを柔軟に処理可能。
+
 ### 4.2 config/ ディレクトリの削除
 
 #### Task 2.1: config/ の削除
@@ -319,20 +376,55 @@ engine = EngineFactory.create_engine("reazonspeech", device="cuda", use_int8=Tru
 
 #### Task 3.1: benchmarks/common/engines.py
 
+**依存**: Task 1.1-1.4 完了後に実施
+
+**変更内容:**
+- `_build_config()` メソッドを削除
+- `_create_engine()` で `**engine_options` を使用
+
 ```python
 # Before
-config = {
-    "transcription": {
-        "input_language": language,
+def _build_config(self, engine_id: str, language: str) -> dict[str, Any]:
+    config: dict[str, Any] = {
+        "transcription": {
+            "input_language": language,
+        }
     }
-}
-engine = EngineFactory.create_engine(engine_id, device, config)
+    if engine_id.startswith("whispers2t_"):
+        config["whispers2t"] = {"use_vad": False}
+    return config
+
+def _create_engine(self, engine_id, device, language):
+    config = self._build_config(engine_id, language)
+    engine = EngineFactory.create_engine(engine_id, device, config)
+    ...
 
 # After
-engine = EngineFactory.create_engine(engine_id, device=device)
+def _create_engine(self, engine_id, device, language):
+    # engine_options を構築
+    engine_options: dict[str, Any] = {
+        "language": language,
+    }
+
+    # WhisperS2T の場合は VAD を無効化（純粋な ASR 性能を測定）
+    if engine_id.startswith("whispers2t_"):
+        engine_options["use_vad"] = False
+
+    engine = EngineFactory.create_engine(
+        engine_type=engine_id,
+        device=device,
+        **engine_options,
+    )
+    ...
 ```
 
-> **注意**: `language` は `EngineFactory` に渡す必要がなくなります。必要に応じてベンチマーク側でエンジン選択ロジックを実装してください。
+**変更しない箇所:**
+- `get_engine(engine_id, device, language)` - シグネチャ維持
+- `get_model_memory(engine_id, device, language)` - シグネチャ維持
+- `unload_engine(engine_id, device, language)` - シグネチャ維持
+- キャッシュキー `f"{engine_id}_{device}_{language}"` - 維持
+
+> **注意**: `language` パラメータは多言語エンジンで実際に使用されるため、維持が必要。
 
 #### Task 3.2: Examples の更新
 
@@ -511,13 +603,19 @@ Config を参照している箇所と、具体的な変更内容。
 
 | ファイル | 現在の使用 | 変更内容 |
 |----------|-----------|----------|
-| `engines/engine_factory.py` | `build_core_config()` 呼び出し | `LANGUAGE_DEFAULTS` クラス定数に置き換え |
+| `engines/engine_factory.py` | `build_core_config()`, `_prepare_config()` | `**engine_options` + `EngineMetadata.default_params` |
+| `engines/whispers2t_engine.py` | `config["transcription"]["input_language"]` | `__init__(language=...)` で直接受け取る |
+| `engines/canary_engine.py` | `config["transcription"]["input_language"]` | `__init__(language=...)` で直接受け取る |
+| `engines/voxtral_engine.py` | `config["transcription"]["input_language"]` | `__init__(language=...)` で直接受け取る |
+| `engines/reazonspeech_engine.py` | `config["transcription"]["reazonspeech_config"]` | `__init__(use_int8=..., ...)` で直接受け取る |
+| `engines/parakeet_engine.py` | `config["parakeet"]["model_name"]` | `__init__(model_name=...)` で直接受け取る |
+| `benchmarks/common/engines.py` | `_build_config()` | `**engine_options` で渡す |
 | `livecap_core/cli.py` | `--dump-config`, `ConfigValidator` | `--info` に置き換え、Validator 削除 |
 | `examples/realtime/basic_file_transcription.py` | `get_default_config()` | 直接パラメータ指定に変更 |
 | `examples/realtime/async_microphone.py` | `get_default_config()` | 直接パラメータ指定に変更 |
 | `examples/realtime/callback_api.py` | `get_default_config()` | 直接パラメータ指定に変更 |
 | `examples/realtime/custom_vad_config.py` | `get_default_config()` | 直接パラメータ指定に変更 |
-| `tests/integration/engines/test_smoke_engines.py` | `_build_config()` 関数 | `language` 引数で直接指定 |
+| `tests/integration/engines/test_smoke_engines.py` | `_build_config()` 関数 | `**engine_options` で直接指定 |
 | `tests/integration/transcription/test_file_transcription_pipeline.py` | `config=get_default_config()` | `config` パラメータ削除 |
 | `tests/integration/realtime/test_e2e_realtime_flow.py` | `config["transcription"]` 操作 | Config 操作を削除 |
 
@@ -539,14 +637,13 @@ Grep で検出されたが、実際には影響がない箇所。
 | ファイル | 理由 |
 |----------|------|
 | `livecap_core/vad/config.py` | VADConfig dataclass（維持対象） |
-| `benchmarks/common/engines.py` | 別の config 変数（`language` 引数化で対応済み） |
 
 ### 10.4 評価サマリー
 
 - **削除ファイル**: 7 ファイル
-- **更新ファイル（コード）**: 9 ファイル
+- **更新ファイル（コード）**: 15 ファイル（エンジンクラス 5 ファイル追加）
 - **更新ファイル（ドキュメント）**: 6 ファイル
-- **影響範囲**: 限定的、安全に実装可能
+- **影響範囲**: 中程度、エンジンクラス修正が追加で必要
 
 > **注意**: `docs/architecture/core-api-spec.md` と `docs/reference/feature-inventory.md` は Config 参照が多いため、Phase 2 完了後に全面的な見直しが必要です。
 
@@ -562,3 +659,5 @@ Grep で検出されたが、実際には影響がない箇所。
 | 2025-12-01 | CLI `--info` 出力内容を具体化、ドキュメント更新対象を追加 |
 | 2025-12-02 | **auto 廃止、LANGUAGE_DEFAULTS 廃止**: エンジン明示指定を必須化 |
 | 2025-12-02 | Task 1.3 追加: `EngineMetadata.default_params` 拡充、設計原則を明記 |
+| 2025-12-02 | Task 1.4 追加: 各エンジンクラスの `__init__` 修正（`language` パラメータ対応） |
+| 2025-12-02 | Task 3.1 更新: benchmarks の `**engine_options` 対応、影響調査結果を更新 |
