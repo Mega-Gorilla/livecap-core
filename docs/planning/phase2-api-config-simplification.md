@@ -60,12 +60,17 @@ with StreamTranscriber(engine=engine, vad_config=vad_config) as transcriber:
 | 箇所 | 使用内容 | 廃止後の対応 |
 |------|----------|-------------|
 | `EngineFactory.create_engine()` | `language_engines` マッピング、auto 解決 | **auto 廃止**、エンジン明示指定を必須化 |
-| `EngineFactory._configure_engine_specific_settings()` | エンジン固有設定 | `**engine_options` で対応 |
+| `EngineFactory._configure_engine_specific_settings()` | エンジン固有設定 | **メソッド廃止**、`EngineMetadata.default_params` に統合 |
+| `EngineFactory._prepare_config()` | Config の正規化 | **メソッド廃止** |
+| `EngineFactory.resolve_auto_engine()` | auto → 実エンジン解決 | **メソッド廃止** |
+| `EngineFactory.get_default_engine_for_language()` | 言語別デフォルト | **メソッド廃止**（`EngineMetadata` で代替可能） |
 | `benchmarks/common/engines.py` | `transcription.input_language` | 引数で直接指定 |
 | `cli.py --dump-config` | 診断出力 | `--info` に置き換え |
 | `examples/*.py` | 設定の取得 | 直接パラメータ指定 |
 
-> **重要な設計決定**: `engine_type="auto"` は廃止します。各エンジンの対応言語は `EngineMetadata.get_engines_for_language()` で確認でき、ユーザーは明示的にエンジンを選択します。
+> **重要な設計決定**:
+> 1. `engine_type="auto"` は廃止。`EngineMetadata.get_engines_for_language()` でエンジン検索可能
+> 2. `EngineMetadata.default_params` がエンジン固有パラメータの唯一の定義場所
 
 ### 2.3 削除対象ファイル
 
