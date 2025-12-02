@@ -55,6 +55,14 @@ from .vad import (
     VADState,
 )
 
+# Phase 3: Engine API
+from .engines import (
+    EngineFactory,
+    EngineMetadata,
+    BaseEngine,
+    EngineInfo,
+)
+
 # MicrophoneSource は遅延インポート（PortAudio 依存）
 if TYPE_CHECKING:
     from .audio_sources import MicrophoneSource
@@ -92,6 +100,11 @@ __all__ = [
     "VADProcessor",
     "VADSegment",
     "VADState",
+    # Phase 3: Engine API
+    "EngineFactory",
+    "EngineMetadata",
+    "BaseEngine",
+    "EngineInfo",
 ]
 
 

@@ -15,13 +15,13 @@ import optuna
 from optuna.samplers import TPESampler
 
 from benchmarks.common.datasets import AudioFile, DatasetManager
-from engines.engine_factory import EngineFactory
+from livecap_core.engines.engine_factory import EngineFactory
 
 from .objective import VADObjective
 from .visualization import OptimizationReport, ReportPaths
 
 if TYPE_CHECKING:
-    from engines.base_engine import TranscriptionEngine
+    from livecap_core import TranscriptionEngine
 
 logger = logging.getLogger(__name__)
 

@@ -65,7 +65,7 @@ def main() -> None:
             StreamTranscriber,
             TranscriptionResult,
         )
-        from engines.engine_factory import EngineFactory
+        from livecap_core.engines.engine_factory import EngineFactory
     except ImportError as e:
         print(f"Error: Required module not found: {e}")
         print("Please install: pip install livecap-core[vad,engines-torch]")

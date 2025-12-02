@@ -322,7 +322,7 @@ class SharedEngineManager:
                     device = 'cpu'
 
             # EngineFactoryを使用してエンジンを作成
-            from engines.engine_factory import EngineFactory
+            from .engine_factory import EngineFactory
             engine = EngineFactory.create_engine(
                 engine_type=self.engine_type,
                 device=device,

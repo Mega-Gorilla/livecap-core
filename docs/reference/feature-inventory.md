@@ -127,8 +127,8 @@ from livecap_core import (
     MicrophoneSource,
     VADConfig,
     TranscriptionResult,
+    EngineFactory,
 )
-from engines import EngineFactory
 
 # === 基本的な使用方法 ===
 engine = EngineFactory.create_engine("whispers2t_base", device="cuda")
@@ -324,8 +324,7 @@ except FileTranscriptionCancelled:
 **サンプルコード:**
 
 ```python
-from engines import EngineFactory, BaseEngine
-from engines.metadata import EngineMetadata, EngineInfo
+from livecap_core import EngineFactory, BaseEngine, EngineMetadata, EngineInfo
 import numpy as np
 
 # === エンジンの作成と使用 ===
@@ -406,15 +405,14 @@ print(f"日本語対応: {ja_engines}")
 
 ---
 
-### 2.4 エンジン設定 (`engines.metadata`)
+### 2.4 エンジン設定 (`livecap_core.engines.metadata`)
 
 **概要:** エンジンメタデータとデフォルトパラメータの管理（Phase 2 で `livecap_core.config` は廃止）
 
 **サンプルコード:**
 
 ```python
-from engines.metadata import EngineMetadata, EngineInfo
-from engines import EngineFactory
+from livecap_core import EngineMetadata, EngineInfo, EngineFactory
 
 # === エンジン設定（Phase 2: Config 廃止後） ===
 
@@ -837,8 +835,7 @@ pip install livecap-core[engines-nemo]
 
 ```python
 from pathlib import Path
-from livecap_core import FileTranscriptionPipeline, FileTranscriptionProgress
-from engines import EngineFactory
+from livecap_core import FileTranscriptionPipeline, FileTranscriptionProgress, EngineFactory
 
 # エンジンの初期化（Phase 2: 直接パラメータ指定）
 engine = EngineFactory.create_engine(

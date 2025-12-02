@@ -66,6 +66,14 @@ class TranscriptionEngine(Protocol):
         """エンジンが要求するサンプリングレートを取得"""
         ...
 
+    def get_engine_name(self) -> str:
+        """エンジン名を取得"""
+        ...
+
+    def cleanup(self) -> None:
+        """リソースのクリーンアップ"""
+        ...
+
 
 class StreamTranscriber:
     """

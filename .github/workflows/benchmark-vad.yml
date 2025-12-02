@@ -207,7 +207,7 @@ jobs:
           $customVads = "${{ inputs.vads }}"
 
           # Get available engines and VADs from Python
-          $availableEngines = python -c "from engines.metadata import EngineMetadata; print(','.join(EngineMetadata.get_all().keys()))"
+          $availableEngines = python -c "from livecap_core import EngineMetadata; print(','.join(EngineMetadata.get_all().keys()))"
           $availableVads = python -c "from benchmarks.vad.factory import get_all_vad_ids; print(','.join(get_all_vad_ids()))"
 
           Write-Host "=== Available Engines ==="

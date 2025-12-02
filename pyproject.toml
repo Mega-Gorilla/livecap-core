@@ -105,7 +105,7 @@ livecap-core = "livecap_core.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["livecap_core*", "engines*", "config*", "benchmarks*"]
+include = ["livecap_core*", "benchmarks*"]
 
 [tool.pytest.ini_options]
 markers = [

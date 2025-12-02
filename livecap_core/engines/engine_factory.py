@@ -47,7 +47,7 @@ class EngineFactory:
 
             # 動的インポート
             import importlib
-            module = importlib.import_module(module_name, package="engines")
+            module = importlib.import_module(module_name, package="livecap_core.engines")
             engine_class = getattr(module, class_name)
 
             return engine_class

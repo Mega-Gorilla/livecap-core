@@ -48,7 +48,7 @@ def _ensure_ffmpeg(ensure: bool) -> str | None:
 def _get_available_engines() -> list[str]:
     """Get list of available engine IDs."""
     try:
-        from engines.metadata import EngineMetadata
+        from livecap_core.engines.metadata import EngineMetadata
         return list(EngineMetadata.get_all().keys())
     except ImportError:
         return []

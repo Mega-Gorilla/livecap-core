@@ -87,8 +87,8 @@ jobs:
           import livecap_core
 
           optional_module = {
-              "engines-torch": "engines.reazonspeech_engine",
-              "engines-nemo": "engines.parakeet_engine",
+              "engines-torch": "livecap_core.engines.reazonspeech_engine",
+              "engines-nemo": "livecap_core.engines.parakeet_engine",
           }["${{ matrix.extra }}"]
           importlib.import_module(optional_module)
           print("ok")

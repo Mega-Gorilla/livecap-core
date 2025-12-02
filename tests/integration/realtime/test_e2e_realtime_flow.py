@@ -113,7 +113,7 @@ def _try_create_engine(
 ):
     """Try to create an ASR engine, return None if unavailable."""
     try:
-        from engines.engine_factory import EngineFactory
+        from livecap_core.engines.engine_factory import EngineFactory
 
         # Build engine options
         engine_options = {}

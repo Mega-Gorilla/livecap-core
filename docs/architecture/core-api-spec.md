@@ -84,12 +84,12 @@ from livecap_core import (
 )
 ```
 
-### 3.2 エンジン設定 (`engines.metadata`)
+### 3.2 エンジン設定 (`livecap_core.engines.metadata`)
 
 > **Note**: Phase 2 で `livecap_core.config` モジュールは廃止されました。エンジン設定は `EngineMetadata.default_params` で管理されます。
 
 ```python
-from engines.metadata import EngineMetadata
+from livecap_core import EngineMetadata
 
 # 利用可能なエンジンを取得
 engines = EngineMetadata.get_all()
@@ -243,7 +243,7 @@ python -m livecap_core --ensure-ffmpeg
 ### 4.1 エンジンファクトリ
 
 ```python
-from engines import EngineFactory, EngineMetadata
+from livecap_core import EngineFactory, EngineMetadata
 
 # エンジンを作成（EngineMetadata.default_params が自動適用）
 engine = EngineFactory.create_engine(
@@ -369,7 +369,7 @@ pipeline.close()
 ### 6.2 エンジンを直接使用
 
 ```python
-from engines import EngineFactory
+from livecap_core import EngineFactory
 import numpy as np
 
 # 英語音声を文字起こし
@@ -718,8 +718,7 @@ class EngineError(TranscriptionError):
 #### 同期ストリーム処理
 
 ```python
-from livecap_core import StreamTranscriber, FileSource
-from engines import EngineFactory
+from livecap_core import StreamTranscriber, FileSource, EngineFactory
 
 engine = EngineFactory.create_engine("whispers2t_base", "cuda")
 engine.load_model()
