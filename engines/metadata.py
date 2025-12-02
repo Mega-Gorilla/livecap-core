@@ -46,9 +46,7 @@ class EngineMetadata:
             module=".reazonspeech_engine",
             class_name="ReazonSpeechEngine",
             default_params={
-                "temperature": 0.0,
-                "beam_size": 10,
-                # Phase 2: カテゴリA パラメータ追加
+                # カテゴリA パラメータ（エンジンの__init__で使用）
                 "use_int8": False,
                 "num_threads": 4,
                 "decoding_method": "greedy_search",
