@@ -80,9 +80,9 @@ def main(argv: list[str] | None = None) -> int:
         description="Inspect and validate a LiveCap Core installation.",
     )
     parser.add_argument(
-        "--list-engines",
+        "--info",
         action="store_true",
-        help="List available ASR engines.",
+        help="Show detailed information about available ASR engines.",
     )
     parser.add_argument(
         "--ensure-ffmpeg",
@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
 
     report = diagnose(ensure_ffmpeg=args.ensure_ffmpeg)
 
-    if args.list_engines:
+    if args.info:
         try:
             from engines.metadata import EngineMetadata
             print("Available ASR Engines:")
@@ -115,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.as_json:
         print(report.to_json())
-    elif not args.list_engines:
+    elif not args.info:
         print("LiveCap Core diagnostics:")
         print(f"  Models root: {report.models_root}")
         print(f"  Cache root: {report.cache_root}")
