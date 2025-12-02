@@ -301,7 +301,47 @@ where = ["."]
 include = ["livecap_core*", "benchmarks*"]
 ```
 
-### 4.5 Task 5: ドキュメント更新
+### 4.5 Task 5: TranscriptionEngine Protocol の統一
+
+**背景:**
+`benchmarks/common/engines.py` と `livecap_core/transcription/stream.py` に同名の `TranscriptionEngine` Protocol が重複している。BaseEngine は既に `get_engine_name()` と `cleanup()` を実装しているため、Protocol を統一する。
+
+**Step 1: livecap_core/transcription/stream.py を拡張**
+
+```python
+# Before
+class TranscriptionEngine(Protocol):
+    def transcribe(self, audio: np.ndarray, sample_rate: int) -> Tuple[str, float]: ...
+    def get_required_sample_rate(self) -> int: ...
+
+# After
+class TranscriptionEngine(Protocol):
+    def transcribe(self, audio: np.ndarray, sample_rate: int) -> Tuple[str, float]: ...
+    def get_required_sample_rate(self) -> int: ...
+    def get_engine_name(self) -> str: ...  # 追加
+    def cleanup(self) -> None: ...  # 追加
+```
+
+**Step 2: benchmarks/common/engines.py から重複を削除**
+
+```python
+# Before
+class TranscriptionEngine(Protocol):
+    """Protocol for ASR engines."""
+    def transcribe(self, audio: Any, sample_rate: int) -> tuple[str, float]: ...
+    def get_required_sample_rate(self) -> int: ...
+    def get_engine_name(self) -> str: ...
+    def cleanup(self) -> None: ...
+
+# After
+from livecap_core import TranscriptionEngine  # livecap_core から使用
+# 独自 Protocol 定義を削除
+```
+
+**確認済み:**
+全エンジン（ReazonSpeech, Parakeet, Canary, WhisperS2T, Voxtral）に `get_engine_name()` と `cleanup()` が実装済み。
+
+### 4.6 Task 6: ドキュメント更新
 
 **README.md の更新例:**
 
@@ -315,7 +355,7 @@ from livecap_core.engines import EngineFactory
 from livecap_core import EngineFactory  # livecap_core/__init__.py でエクスポート済み
 ```
 
-### 4.6 Task 6: テスト実行・確認
+### 4.7 Task 7: テスト実行・確認
 
 ```bash
 # ユニットテスト
@@ -332,7 +372,7 @@ pip install -e .
 python -c "from livecap_core.engines import EngineFactory; print('OK')"
 ```
 
-### 4.7 Task 7: 旧ディレクトリのクリーンアップ
+### 4.8 Task 8: 旧ディレクトリのクリーンアップ
 
 `git mv` を使用したため、旧 `engines/` は自動的に削除される。
 残留ファイル（`__pycache__` 等）がある場合は手動削除。
@@ -355,18 +395,22 @@ Step 4: livecap_core/__init__.py にエクスポート追加
     EngineFactory, EngineMetadata, BaseEngine, EngineInfo
     ↓
 Step 5: pyproject.toml の更新
-    include から engines* を削除
+    include から engines*, config* を削除
     ↓
-Step 6: テスト実行
+Step 6: TranscriptionEngine Protocol 統一
+    - livecap_core/transcription/stream.py に get_engine_name, cleanup 追加
+    - benchmarks/common/engines.py から重複 Protocol 削除
+    ↓
+Step 7: テスト実行
     uv run pytest tests/ -v
     ↓
-Step 7: pip install -e . で確認
+Step 8: pip install -e . で確認
     ↓
-Step 8: ドキュメント更新（7ファイル）
+Step 9: ドキュメント更新（8ファイル）
     ↓
-Step 9: CI ワークフロー確認（必要に応じて更新）
+Step 10: CI ワークフロー更新（3ファイル、5箇所）
     ↓
-Step 10: PR 作成・レビュー・マージ
+Step 11: PR 作成・レビュー・マージ
 ```
 
 ---
@@ -412,7 +456,9 @@ Step 10: PR 作成・レビュー・マージ
 - [ ] `engines/` が `livecap_core/engines/` に移動されている
 - [ ] 全インポートパスが `livecap_core.engines` に更新されている
 - [ ] `livecap_core/__init__.py` で `EngineFactory`, `EngineMetadata`, `EngineInfo` がエクスポートされている
-- [ ] `pyproject.toml` から `engines*` が削除されている
+- [ ] `pyproject.toml` から `engines*`, `config*` が削除されている
+- [ ] `TranscriptionEngine` Protocol が統一されている（`get_engine_name`, `cleanup` 追加）
+- [ ] `benchmarks/common/engines.py` の重複 Protocol が削除されている
 - [ ] 全テストがパス
 - [ ] `pip install -e .` が動作する
 - [ ] ドキュメントが更新されている
@@ -429,22 +475,25 @@ Step 10: PR 作成・レビュー・マージ
 | CI 失敗 | 中 | ローカルで全テスト実行後に PR 作成 |
 | ベンチマーク動作不良 | 低 | ベンチマーク実行確認を検証項目に含む |
 
-### 8.1 設計決定: TranscriptionEngine の重複について
+### 8.1 設計決定: TranscriptionEngine の統一
 
-`benchmarks/common/engines.py` と `livecap_core/transcription/stream.py` に同名の `TranscriptionEngine` Protocol が存在する。
+`benchmarks/common/engines.py` と `livecap_core/transcription/stream.py` に同名の `TranscriptionEngine` Protocol が重複していた。
 
-| 定義場所 | メソッド |
+| 定義場所 | メソッド（変更前） |
 |----------|----------|
 | `livecap_core` | `transcribe`, `get_required_sample_rate` (2メソッド) |
 | `benchmarks` | 上記 + `get_engine_name`, `cleanup` (4メソッド) |
 
-**決定: そのまま維持（統一しない）**
+**決定: livecap_core に統一（Phase 3 で実施）**
 
 理由:
-1. benchmarks 固有の追加要件（エンジン名取得、リソース解放）がある
-2. benchmarks は独立したツールパッケージとして設計されている
-3. Phase 3 は「パッケージ構造整理」であり、API 統一は scope 外
-4. 両方とも Protocol（構造的部分型）であり、実装に影響しない
+1. **BaseEngine は既にこれらのメソッドを実装済み** - 新機能追加ではなく既存実装の反映
+2. **技術的負債の早期解消** - 重複は長期的に分岐リスクがある
+3. **単一の真実のソース** - Protocol 定義が1箇所になりメンテナンス性向上
+4. **破壊的変更ではない** - Protocol へのメソッド追加は既存コードに影響しない
+
+**確認済み:**
+全エンジン（ReazonSpeech, Parakeet, Canary, WhisperS2T, Voxtral）に `get_engine_name()` と `cleanup()` が実装済み。
 
 ---
 
@@ -482,3 +531,4 @@ from livecap_core.engines.metadata import EngineMetadata
 | 2025-12-02 | 不明点・問題点の解決: TranscriptionEngine バグ修正追記、手動修正箇所の明記、EngineInfo エクスポート追加、GEMINI.md 削除 |
 | 2025-12-02 | レビュー対応: ドキュメント影響範囲拡充（AGENTS.md, vad/config.md追加）、pyproject.toml の config* 削除を明記、TranscriptionEngine 重複の設計決定追記 |
 | 2025-12-02 | CI/CD 更新箇所を具体化（行番号追記、core-tests.yml は更新不要と明記） |
+| 2025-12-02 | TranscriptionEngine 統一を Phase 3 スコープに追加（Task 5, Step 6）、設計決定を「維持」から「統一」に変更 |
