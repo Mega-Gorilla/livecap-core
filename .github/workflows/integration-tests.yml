@@ -152,7 +152,7 @@ jobs:
           LIVECAP_FFMPEG_BIN: "${{ github.workspace }}/ffmpeg-bin"
         run: |
           uv run python - <<'PY'
-          from engines.engine_factory import EngineFactory
+          from livecap_core import EngineFactory
 
           def warm(engine_type: str, device: str, lang: str) -> None:
               engine_options = {"language": lang} if engine_type.startswith("whispers2t_") else {}
@@ -343,7 +343,7 @@ jobs:
         run: |
           # Bypass lockfile sync by using python directly
           .venv/bin/python - <<'PY'
-          from engines.engine_factory import EngineFactory
+          from livecap_core import EngineFactory
 
           import gc
           import torch
@@ -406,7 +406,7 @@ jobs:
                   )
               os.uname = uname
 
-          from engines.engine_factory import EngineFactory
+          from livecap_core import EngineFactory
           import gc
           import torch
 

@@ -183,7 +183,7 @@ jobs:
           $customEngines = "${{ inputs.engines }}"
 
           # Get available engines from Python
-          $availableEngines = python -c "from engines.metadata import EngineMetadata; print(','.join(EngineMetadata.get_all().keys()))"
+          $availableEngines = python -c "from livecap_core import EngineMetadata; print(','.join(EngineMetadata.get_all().keys()))"
 
           Write-Host "=== Available Engines ==="
           Write-Host $availableEngines

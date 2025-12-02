@@ -238,9 +238,8 @@ fast_config = VADConfig(
 ### StreamTranscriber との統合
 
 ```python
-from livecap_core import StreamTranscriber, MicrophoneSource
+from livecap_core import StreamTranscriber, MicrophoneSource, EngineFactory
 from livecap_core.vad import VADProcessor, VADConfig
-from engines import EngineFactory
 
 # エンジン初期化
 engine = EngineFactory.create_engine("whispers2t_base", device="cuda")

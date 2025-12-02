@@ -2,8 +2,8 @@ from typing import Any, Dict, Optional
 
 import pytest
 
-from engines.engine_factory import EngineFactory
-from engines.metadata import EngineInfo, EngineMetadata
+from livecap_core.engines.engine_factory import EngineFactory
+from livecap_core.engines.metadata import EngineInfo, EngineMetadata
 
 
 class DummyEngine:

@@ -48,7 +48,7 @@ AudioSource (mic/file) → VADProcessor → StreamTranscriber → TranscriptionR
   - `vad/`: VAD processor with pluggable backends (`backends/silero.py`)
   - `transcription/file_pipeline.py`: Batch file transcription to SRT
 
-- **`engines/`**: ASR engine adapters implementing `BaseEngine`
+- **`livecap_core/engines/`**: ASR engine adapters implementing `BaseEngine`
   - `base_engine.py`: Abstract base with Template Method pattern
   - `engine_factory.py`: `EngineFactory.create_engine(engine_type, device, **engine_options)`
   - `metadata.py`: Engine registry with `EngineMetadata.default_params` for each engine
@@ -58,8 +58,7 @@ AudioSource (mic/file) → VADProcessor → StreamTranscriber → TranscriptionR
 
 ```python
 # StreamTranscriber usage
-from livecap_core import StreamTranscriber, MicrophoneSource
-from engines import EngineFactory
+from livecap_core import StreamTranscriber, MicrophoneSource, EngineFactory
 
 engine = EngineFactory.create_engine("whispers2t_base", device="cuda")
 engine.load_model()
@@ -73,11 +72,13 @@ with StreamTranscriber(engine=engine) as transcriber:
 class TranscriptionEngine(Protocol):
     def transcribe(self, audio: np.ndarray, sample_rate: int) -> Tuple[str, float]: ...
     def get_required_sample_rate(self) -> int: ...
+    def get_engine_name(self) -> str: ...
+    def cleanup(self) -> None: ...
 ```
 
 ### Configuration
 
-- Engine defaults defined in `engines/metadata.py` via `EngineMetadata.default_params`
+- Engine defaults defined in `livecap_core/engines/metadata.py` via `EngineMetadata.default_params`
 - Engine options passed via `**kwargs` to `EngineFactory.create_engine()`
 - VAD config via `VADConfig(threshold, min_speech_ms, min_silence_ms, speech_pad_ms)`
 

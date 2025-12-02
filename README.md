@@ -34,8 +34,7 @@ sudo apt-get install libc++1
 ### リアルタイム文字起こし
 
 ```python
-from livecap_core import StreamTranscriber, MicrophoneSource
-from engines import EngineFactory
+from livecap_core import StreamTranscriber, MicrophoneSource, EngineFactory
 
 # エンジン初期化
 engine = EngineFactory.create_engine("whispers2t_base", device="cuda")
@@ -51,8 +50,7 @@ with StreamTranscriber(engine=engine) as transcriber:
 ### ファイル文字起こし
 
 ```python
-from livecap_core import FileTranscriptionPipeline
-from engines import EngineFactory
+from livecap_core import FileTranscriptionPipeline, EngineFactory
 
 engine = EngineFactory.create_engine("whispers2t_base", device="cuda")
 engine.load_model()

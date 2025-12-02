@@ -7,39 +7,13 @@ Provides:
 from __future__ import annotations
 
 import logging
-from typing import Any, Protocol
+from typing import Any
+
+from livecap_core import TranscriptionEngine
 
 __all__ = ["BenchmarkEngineManager", "TranscriptionEngine"]
 
 logger = logging.getLogger(__name__)
-
-
-class TranscriptionEngine(Protocol):
-    """Protocol for ASR engines."""
-
-    def transcribe(self, audio: Any, sample_rate: int) -> tuple[str, float]:
-        """Transcribe audio.
-
-        Args:
-            audio: Audio data as numpy array
-            sample_rate: Sample rate in Hz
-
-        Returns:
-            Tuple of (transcript, confidence)
-        """
-        ...
-
-    def get_required_sample_rate(self) -> int:
-        """Get the required sample rate for this engine."""
-        ...
-
-    def get_engine_name(self) -> str:
-        """Get the engine name."""
-        ...
-
-    def cleanup(self) -> None:
-        """Clean up resources."""
-        ...
 
 
 class BenchmarkEngineManager:
@@ -126,8 +100,8 @@ class BenchmarkEngineManager:
             Engine instance
         """
         # Import here to avoid circular imports
-        from engines.engine_factory import EngineFactory
-        from engines.metadata import EngineMetadata
+        from livecap_core.engines.engine_factory import EngineFactory
+        from livecap_core.engines.metadata import EngineMetadata
 
         # Verify engine exists
         info = EngineMetadata.get(engine_id)
@@ -270,7 +244,7 @@ class BenchmarkEngineManager:
         Returns:
             List of engine IDs
         """
-        from engines.metadata import EngineMetadata
+        from livecap_core.engines.metadata import EngineMetadata
         return EngineMetadata.get_engines_for_language(language)
 
     @staticmethod
@@ -280,5 +254,5 @@ class BenchmarkEngineManager:
         Returns:
             Dictionary mapping engine ID to EngineInfo
         """
-        from engines.metadata import EngineMetadata
+        from livecap_core.engines.metadata import EngineMetadata
         return EngineMetadata.get_all()

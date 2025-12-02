@@ -48,8 +48,7 @@ pip install livecap-core[engines-nemo]
 ### 最小構成
 
 ```python
-from livecap_core import StreamTranscriber, FileSource
-from engines import EngineFactory
+from livecap_core import StreamTranscriber, FileSource, EngineFactory
 
 # エンジン初期化
 engine = EngineFactory.create_engine("whispers2t_base", "cuda")
@@ -71,8 +70,7 @@ with StreamTranscriber(engine=engine) as transcriber:
 最もシンプルな使い方です。
 
 ```python
-from livecap_core import StreamTranscriber, FileSource
-from engines import EngineFactory
+from livecap_core import StreamTranscriber, FileSource, EngineFactory
 
 engine = EngineFactory.create_engine("whispers2t_base", "cuda")
 engine.load_model()
@@ -91,8 +89,7 @@ asyncio を使った非同期処理に対応しています。
 
 ```python
 import asyncio
-from livecap_core import StreamTranscriber, MicrophoneSource
-from engines import EngineFactory
+from livecap_core import StreamTranscriber, MicrophoneSource, EngineFactory
 
 async def realtime_transcribe():
     engine = EngineFactory.create_engine("whispers2t_base", "cuda")
@@ -116,8 +113,7 @@ asyncio.run(realtime_transcribe())
 > **注意**: `feed_audio()` は VAD でセグメントを検出した際に `engine.transcribe()` を呼び出すため、ブロッキングが発生します（数十ms〜数百ms）。完全な非同期処理が必要な場合は `transcribe_async()` を使用してください。
 
 ```python
-from livecap_core import StreamTranscriber, FileSource
-from engines import EngineFactory
+from livecap_core import StreamTranscriber, FileSource, EngineFactory
 
 engine = EngineFactory.create_engine("whispers2t_base", "cuda")
 engine.load_model()
@@ -195,8 +191,7 @@ vad = VADProcessor(
 `VADProcessor.from_language()` を使うと、ベンチマーク結果に基づいて言語に最適な VAD バックエンドとパラメータが自動選択されます。
 
 ```python
-from livecap_core import StreamTranscriber, VADProcessor
-from engines import EngineFactory
+from livecap_core import StreamTranscriber, VADProcessor, EngineFactory
 
 # 1. 言語に最適化された VAD を作成
 vad = VADProcessor.from_language("ja")  # 日本語 → TenVAD

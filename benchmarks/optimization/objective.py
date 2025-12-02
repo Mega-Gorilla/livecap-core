@@ -19,7 +19,7 @@ from benchmarks.vad.factory import create_vad
 from .param_spaces import suggest_params
 
 if TYPE_CHECKING:
-    from engines.base_engine import TranscriptionEngine
+    from livecap_core import TranscriptionEngine
 
 logger = logging.getLogger(__name__)
 

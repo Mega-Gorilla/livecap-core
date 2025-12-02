@@ -18,7 +18,7 @@ if str(TESTS_ROOT) not in sys.path:
 
 import gc
 
-from engines.engine_factory import EngineFactory
+from livecap_core.engines.engine_factory import EngineFactory
 from livecap_core.transcription import FileTranscriptionPipeline
 from utils.text_normalization import normalize_text
 
