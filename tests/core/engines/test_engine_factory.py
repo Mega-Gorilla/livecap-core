@@ -134,3 +134,53 @@ def test_get_engines_for_language():
 
     yue_engines = EngineFactory.get_engines_for_language("yue")
     assert "whispers2t" in yue_engines
+
+
+class TestWhisperS2TValidation:
+    """Test WhisperS2T engine parameter validation."""
+
+    def test_invalid_model_size_raises_valueerror(self):
+        """Test that invalid model_size raises ValueError."""
+        from livecap_core.engines.whispers2t_engine import WhisperS2TEngine
+
+        with pytest.raises(ValueError, match="Unsupported model_size"):
+            WhisperS2TEngine(device="cpu", model_size="invalid-model")
+
+    def test_invalid_compute_type_raises_valueerror(self):
+        """Test that invalid compute_type raises ValueError."""
+        from livecap_core.engines.whispers2t_engine import WhisperS2TEngine
+
+        with pytest.raises(ValueError, match="Unsupported compute_type"):
+            WhisperS2TEngine(device="cpu", compute_type="invalid-type")
+
+    def test_invalid_language_raises_valueerror(self):
+        """Test that invalid language raises ValueError."""
+        from livecap_core.engines.whispers2t_engine import WhisperS2TEngine
+
+        with pytest.raises(ValueError, match="Unsupported language"):
+            WhisperS2TEngine(device="cpu", language="invalid-lang")
+
+    def test_valid_model_sizes_accepted(self):
+        """Test that all documented model sizes are accepted."""
+        from livecap_core.engines.whispers2t_engine import VALID_MODEL_SIZES
+
+        expected_sizes = {
+            "tiny", "base", "small", "medium",
+            "large-v1", "large-v2", "large-v3",
+            "large-v3-turbo", "distil-large-v3",
+        }
+        assert VALID_MODEL_SIZES == expected_sizes
+
+    def test_valid_compute_types_accepted(self):
+        """Test that all documented compute types are accepted."""
+        from livecap_core.engines.whispers2t_engine import VALID_COMPUTE_TYPES
+
+        expected_types = {"auto", "int8", "int8_float16", "float16", "float32"}
+        assert VALID_COMPUTE_TYPES == expected_types
+
+    def test_language_count_is_100(self):
+        """Test that WhisperS2T supports exactly 100 languages."""
+        from livecap_core.engines.whisper_languages import WHISPER_LANGUAGES
+
+        assert len(WHISPER_LANGUAGES) == 100
+        assert "yue" in WHISPER_LANGUAGES  # Cantonese is the 100th language
