@@ -40,8 +40,8 @@ logger = logging.getLogger(__name__)
 
 # Default engines for debug/quick/standard modes
 DEFAULT_MODE_ENGINES = {
-    "ja": ["parakeet_ja", "whispers2t_large_v3"],
-    "en": ["parakeet", "whispers2t_large_v3"],
+    "ja": ["parakeet_ja", "whispers2t"],
+    "en": ["parakeet", "whispers2t"],
 }
 
 

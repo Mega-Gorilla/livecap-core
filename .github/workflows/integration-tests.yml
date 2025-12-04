@@ -154,8 +154,13 @@ jobs:
           uv run python - <<'PY'
           from livecap_core import EngineFactory
 
-          def warm(engine_type: str, device: str, lang: str) -> None:
-              engine_options = {"language": lang} if engine_type.startswith("whispers2t_") else {}
+          def warm(engine_type: str, device: str, lang: str, model_size: str = None) -> None:
+              engine_options = {}
+              if engine_type == "whispers2t":
+                  engine_options["language"] = lang
+                  engine_options["model_size"] = model_size or "base"
+              elif engine_type in ("canary", "voxtral"):
+                  engine_options["language"] = lang
               engine = EngineFactory.create_engine(
                   engine_type=engine_type,
                   device=device,
@@ -165,7 +170,7 @@ jobs:
               models_dir = engine.model_manager.get_models_dir(engine.engine_name)
               print(f"[{engine_type}/{device}] cached at: {models_dir}")
 
-          warm("whispers2t_base", "cpu", "en")
+          warm("whispers2t", "cpu", "en", "base")
           PY
 
       - name: Run engine smoke tests (CPU)
@@ -348,11 +353,14 @@ jobs:
           import gc
           import torch
 
-          def warm(engine_type: str, device: str, lang: str) -> None:
+          def warm(engine_type: str, device: str, lang: str, model_size: str = None) -> None:
               try:
                   # Build engine options based on engine type
                   engine_options = {}
-                  if engine_type.startswith("whispers2t_") or engine_type in ("canary", "voxtral"):
+                  if engine_type == "whispers2t":
+                      engine_options["language"] = lang
+                      engine_options["model_size"] = model_size or "base"
+                  elif engine_type in ("canary", "voxtral"):
                       engine_options["language"] = lang
                   engine = EngineFactory.create_engine(
                       engine_type=engine_type,
@@ -374,7 +382,7 @@ jobs:
                       torch.cuda.empty_cache()
 
           # ReazonSpeech disabled on Linux GPU due to ABI compatibility issues with system libraries
-          warm("whispers2t_base", "cuda", "en")
+          warm("whispers2t", "cuda", "en", "base")
           warm("parakeet", "cuda", "en")
           warm("parakeet_ja", "cuda", "ja")
           warm("canary", "cuda", "en")
@@ -410,11 +418,14 @@ jobs:
           import gc
           import torch
 
-          def warm(engine_type: str, device: str, lang: str) -> None:
+          def warm(engine_type: str, device: str, lang: str, model_size: str = None) -> None:
               try:
                   # Build engine options based on engine type
                   engine_options = {}
-                  if engine_type.startswith('whispers2t_') or engine_type in ('canary', 'voxtral'):
+                  if engine_type == 'whispers2t':
+                      engine_options['language'] = lang
+                      engine_options['model_size'] = model_size or 'base'
+                  elif engine_type in ('canary', 'voxtral'):
                       engine_options['language'] = lang
                   engine = EngineFactory.create_engine(
                       engine_type=engine_type,
@@ -436,7 +447,7 @@ jobs:
                       torch.cuda.empty_cache()
 
           warm('reazonspeech', 'cuda', 'ja')
-          warm('whispers2t_base', 'cuda', 'en')
+          warm('whispers2t', 'cuda', 'en', 'base')
           warm('parakeet', 'cuda', 'en')
           warm('parakeet_ja', 'cuda', 'ja')
           warm('canary', 'cuda', 'en')

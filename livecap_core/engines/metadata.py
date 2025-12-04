@@ -8,6 +8,8 @@
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 
+from .whisper_languages import WHISPER_LANGUAGES
+
 
 @dataclass
 class EngineInfo:
@@ -23,6 +25,7 @@ class EngineInfo:
     default_params: Dict[str, Any] = field(default_factory=dict)
     module: Optional[str] = None  # エンジンモジュールのパス
     class_name: Optional[str] = None  # エンジンクラス名
+    available_model_sizes: Optional[List[str]] = None  # 選択可能なモデルサイズ一覧
 
 
 class EngineMetadata:
@@ -118,91 +121,32 @@ class EngineMetadata:
                 "model_name": "mistralai/Voxtral-Mini-3B-2507",
             }
         ),
-        # Whisper S2T variants
-        "whispers2t_base": EngineInfo(
-            id="whispers2t_base",
-            display_name="WhisperS2T Base",
-            description="Lightweight multilingual ASR model with good balance",
-            supported_languages=["ja", "en", "zh-CN", "zh-TW", "ko", "de", "fr", "es", "ru", "ar", "pt", "it", "hi"],
+        # WhisperS2T - Unified multilingual ASR engine
+        "whispers2t": EngineInfo(
+            id="whispers2t",
+            display_name="WhisperS2T",
+            description="Multilingual ASR model with selectable model sizes (tiny to large-v3-turbo)",
+            supported_languages=list(WHISPER_LANGUAGES),  # 99 languages
             requires_download=True,
-            model_size="74MB",
+            model_size=None,  # Multiple sizes available
             device_support=["cpu", "cuda"],
             streaming=True,
             module=".whispers2t_engine",
             class_name="WhisperS2TEngine",
+            available_model_sizes=[
+                # Standard models
+                "tiny", "base", "small", "medium",
+                # Large models
+                "large-v1", "large-v2", "large-v3",
+                # High-speed models
+                "large-v3-turbo", "distil-large-v3",
+            ],
             default_params={
-                "model_size": "base",
+                "model_size": "large-v3",  # Benchmark compatibility (was whispers2t_large_v3)
+                "compute_type": "auto",
                 "batch_size": 24,
                 "use_vad": True,
-            }
-        ),
-        "whispers2t_tiny": EngineInfo(
-            id="whispers2t_tiny",
-            display_name="WhisperS2T Tiny",
-            description="Ultra-lightweight multilingual ASR model for fastest processing",
-            supported_languages=["ja", "en", "zh-CN", "zh-TW", "ko", "de", "fr", "es", "ru", "ar", "pt", "it", "hi"],
-            requires_download=True,
-            model_size="39MB",
-            device_support=["cpu", "cuda"],
-            streaming=True,
-            module=".whispers2t_engine",
-            class_name="WhisperS2TEngine",
-            default_params={
-                "model_size": "tiny",
-                "batch_size": 24,
-                "use_vad": True,
-            }
-        ),
-        "whispers2t_small": EngineInfo(
-            id="whispers2t_small",
-            display_name="WhisperS2T Small",
-            description="Small multilingual ASR model with improved accuracy",
-            supported_languages=["ja", "en", "zh-CN", "zh-TW", "ko", "de", "fr", "es", "ru", "ar", "pt", "it", "hi"],
-            requires_download=True,
-            model_size="244MB",
-            device_support=["cpu", "cuda"],
-            streaming=True,
-            module=".whispers2t_engine",
-            class_name="WhisperS2TEngine",
-            default_params={
-                "model_size": "small",
-                "batch_size": 24,
-                "use_vad": True,
-            }
-        ),
-        "whispers2t_medium": EngineInfo(
-            id="whispers2t_medium",
-            display_name="WhisperS2T Medium",
-            description="Medium multilingual ASR model with higher accuracy",
-            supported_languages=["ja", "en", "zh-CN", "zh-TW", "ko", "de", "fr", "es", "ru", "ar", "pt", "it", "hi"],
-            requires_download=True,
-            model_size="769MB",
-            device_support=["cpu", "cuda"],
-            streaming=True,
-            module=".whispers2t_engine",
-            class_name="WhisperS2TEngine",
-            default_params={
-                "model_size": "medium",
-                "batch_size": 24,
-                "use_vad": True,
-            }
-        ),
-        "whispers2t_large_v3": EngineInfo(
-            id="whispers2t_large_v3",
-            display_name="WhisperS2T Large-v3",
-            description="Large multilingual ASR model with best accuracy",
-            supported_languages=["ja", "en", "zh-CN", "zh-TW", "ko", "de", "fr", "es", "ru", "ar", "pt", "it", "hi"],
-            requires_download=True,
-            model_size="1.55GB",
-            device_support=["cpu", "cuda"],
-            streaming=True,
-            module=".whispers2t_engine",
-            class_name="WhisperS2TEngine",
-            default_params={
-                "model_size": "large-v3",
-                "batch_size": 24,
-                "use_vad": True,
-            }
+            },
         ),
     }
 

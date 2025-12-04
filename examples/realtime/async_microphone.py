@@ -17,8 +17,9 @@ MicrophoneSource と transcribe_async() を使った非同期処理のサンプ�
 
 環境変数:
     LIVECAP_DEVICE: 使用するデバイス（cuda/cpu）、デフォルト: cuda
-    LIVECAP_ENGINE: 使用するエンジン、デフォルト: whispers2t_base
+    LIVECAP_ENGINE: 使用するエンジン、デフォルト: whispers2t
     LIVECAP_LANGUAGE: 入力言語、デフォルト: ja
+    LIVECAP_MODEL_SIZE: WhisperS2Tのモデルサイズ、デフォルト: base
 
 必要条件:
     - PortAudio ライブラリがインストールされていること
@@ -75,8 +76,9 @@ async def run_transcription(device_id: int | None) -> None:
     """非同期文字起こしを実行."""
     # 設定を環境変数から取得
     device = os.getenv("LIVECAP_DEVICE", "cuda")
-    engine_type = os.getenv("LIVECAP_ENGINE", "whispers2t_base")
+    engine_type = os.getenv("LIVECAP_ENGINE", "whispers2t")
     language = os.getenv("LIVECAP_LANGUAGE", "ja")
+    model_size = os.getenv("LIVECAP_MODEL_SIZE", "base")
 
     print(f"=== Async Microphone Transcription ===")
     print(f"Device: {device}")
@@ -103,10 +105,12 @@ async def run_transcription(device_id: int | None) -> None:
     # エンジン初期化
     print("Initializing engine...")
 
-    # 多言語エンジン（whispers2t_*, canary, voxtral）の場合はlanguageを指定
+    # 多言語エンジン（whispers2t, canary, voxtral）の場合はlanguageを指定
     engine_options = {}
-    if engine_type.startswith("whispers2t_") or engine_type in ("canary", "voxtral"):
+    if engine_type == "whispers2t" or engine_type in ("canary", "voxtral"):
         engine_options["language"] = language
+    if engine_type == "whispers2t":
+        engine_options["model_size"] = model_size
 
     try:
         engine = EngineFactory.create_engine(

@@ -183,12 +183,16 @@ class EngineFactory:
                 f"engines.{engine_type}.description",
                 default=engine_info.description,
             )
-            return {
+            result = {
                 "name": name,
                 "description": description,
                 "supported_languages": engine_info.supported_languages,
                 "default_params": engine_info.default_params,
             }
+            # available_model_sizes が設定されている場合のみ追加
+            if engine_info.available_model_sizes:
+                result["available_model_sizes"] = engine_info.available_model_sizes
+            return result
         return None
 
     @classmethod

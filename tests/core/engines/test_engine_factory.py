@@ -97,27 +97,36 @@ def test_create_engine_rejects_unknown_engine():
 
 def test_get_engine_info_returns_metadata():
     """Test that get_engine_info returns correct metadata."""
-    info = EngineFactory.get_engine_info("whispers2t_base")
+    info = EngineFactory.get_engine_info("whispers2t")
     assert info is not None
     assert info["supported_languages"]
     assert "batch_size" in info["default_params"]
+    # Verify 99 languages are supported
+    assert len(info["supported_languages"]) == 99
+    # Verify available_model_sizes is present
+    assert "available_model_sizes" in info
+    assert "large-v3-turbo" in info["available_model_sizes"]
 
 
 def test_get_available_engines():
     """Test that get_available_engines returns all engines."""
     engines = EngineFactory.get_available_engines()
-    assert "whispers2t_base" in engines
+    assert "whispers2t" in engines
     assert "reazonspeech" in engines
-    assert engines["whispers2t_base"]["name"]
-    assert engines["whispers2t_base"]["description"]
+    assert engines["whispers2t"]["name"]
+    assert engines["whispers2t"]["description"]
 
 
 def test_get_engines_for_language():
     """Test that get_engines_for_language filters correctly."""
     ja_engines = EngineFactory.get_engines_for_language("ja")
     assert "reazonspeech" in ja_engines
-    assert "parakeet_ja" in ja_engines
+    assert "whispers2t" in ja_engines
 
     en_engines = EngineFactory.get_engines_for_language("en")
     assert "parakeet" in en_engines
-    assert "whispers2t_base" in en_engines
+    assert "whispers2t" in en_engines
+
+    # Test new language support (99 languages)
+    vi_engines = EngineFactory.get_engines_for_language("vi")
+    assert "whispers2t" in vi_engines

@@ -88,8 +88,7 @@ class LibraryPreloader:
             'parakeet_ja': {'matplotlib', 'nemo'},
             'canary': {'matplotlib', 'nemo'},
             'voxtral': {'transformers'},
-            'whispers2t_base': {'whisper_s2t'},
-            'whispers2t_large_v3': {'whisper_s2t'},
+            'whispers2t': {'whisper_s2t'},  # Unified engine ID
             'reazonspeech': {'sherpa_onnx'},
         }
         

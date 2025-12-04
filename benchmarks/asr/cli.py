@@ -2,7 +2,7 @@
 
 Usage:
     python -m benchmarks.asr --mode quick
-    python -m benchmarks.asr --engine parakeet_ja whispers2t_large_v3 --language ja
+    python -m benchmarks.asr --engine parakeet_ja whispers2t --language ja
     python -m benchmarks.asr --mode standard --runs 3
 """
 
@@ -48,7 +48,7 @@ Examples:
   python -m benchmarks.asr --mode quick
 
   # Standard benchmark with specific engines
-  python -m benchmarks.asr --engine parakeet_ja whispers2t_large_v3 --language ja
+  python -m benchmarks.asr --engine parakeet_ja whispers2t --language ja
 
   # Full benchmark with multiple runs for statistical accuracy
   python -m benchmarks.asr --mode full --runs 3

@@ -12,8 +12,9 @@ GUI アプリケーションなど、イベント駆動型の処理に適して�
 
 環境変数:
     LIVECAP_DEVICE: 使用するデバイス（cuda/cpu）、デフォルト: cuda
-    LIVECAP_ENGINE: 使用するエンジン、デフォルト: whispers2t_base
+    LIVECAP_ENGINE: 使用するエンジン、デフォルト: whispers2t
     LIVECAP_LANGUAGE: 入力言語、デフォルト: ja
+    LIVECAP_MODEL_SIZE: WhisperS2Tのモデルサイズ、デフォルト: base
 
 注意:
     feed_audio() は VAD でセグメントを検出した際に engine.transcribe() を
@@ -37,8 +38,9 @@ def main() -> None:
     """メイン処理."""
     # 設定を環境変数から取得
     device = os.getenv("LIVECAP_DEVICE", "cuda")
-    engine_type = os.getenv("LIVECAP_ENGINE", "whispers2t_base")
+    engine_type = os.getenv("LIVECAP_ENGINE", "whispers2t")
     language = os.getenv("LIVECAP_LANGUAGE", "ja")
+    model_size = os.getenv("LIVECAP_MODEL_SIZE", "base")
 
     # 音声ファイルのパスを取得
     if len(sys.argv) > 1:
@@ -89,10 +91,12 @@ def main() -> None:
     # エンジン初期化
     print("Initializing engine...")
 
-    # 多言語エンジン（whispers2t_*, canary, voxtral）の場合はlanguageを指定
+    # 多言語エンジン（whispers2t, canary, voxtral）の場合はlanguageを指定
     engine_options = {}
-    if engine_type.startswith("whispers2t_") or engine_type in ("canary", "voxtral"):
+    if engine_type == "whispers2t" or engine_type in ("canary", "voxtral"):
         engine_options["language"] = language
+    if engine_type == "whispers2t":
+        engine_options["model_size"] = model_size
 
     try:
         engine = EngineFactory.create_engine(

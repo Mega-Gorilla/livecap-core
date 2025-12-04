@@ -49,7 +49,7 @@ class BenchmarkEngineManager:
         """Get or create an ASR engine.
 
         Args:
-            engine_id: Engine identifier (e.g., 'reazonspeech', 'whispers2t_base')
+            engine_id: Engine identifier (e.g., 'reazonspeech', 'whispers2t')
             device: Device to use ('cuda' or 'cpu')
             language: Target language code
 
@@ -60,6 +60,7 @@ class BenchmarkEngineManager:
             ImportError: If engine dependencies are not available
             ValueError: If engine_id is unknown
         """
+        # For unified whispers2t, include model_size in cache key
         cache_key = f"{engine_id}_{device}_{language}"
 
         if cache_key not in self._cache:
@@ -156,9 +157,11 @@ class BenchmarkEngineManager:
         options: dict[str, Any] = {}
 
         # Set language for engines that support it
-        # (multi-language engines: canary, voxtral, whispers2t_*)
-        if engine_id.startswith("whispers2t_"):
+        # (multi-language engines: canary, voxtral, whispers2t)
+        if engine_id == "whispers2t":
             options["language"] = language
+            # Use large-v3 by default for benchmarks (best accuracy)
+            options["model_size"] = "large-v3"
             # Disable built-in VAD for benchmark to measure pure ASR performance
             options["use_vad"] = False
         elif engine_id in ("canary", "voxtral"):

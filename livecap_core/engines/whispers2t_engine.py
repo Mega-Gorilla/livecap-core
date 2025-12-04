@@ -11,6 +11,7 @@ import numpy as np
 from .base_engine import BaseEngine
 from .model_memory_cache import ModelMemoryCache
 from .library_preloader import LibraryPreloader
+from .whisper_languages import WHISPER_LANGUAGES, WHISPER_LANGUAGES_SET
 from livecap_core.languages import Languages
 
 # リソースパス解決用のヘルパー関数とデバイス検出関数をインポート
@@ -18,10 +19,30 @@ from livecap_core.utils import detect_device, get_temp_dir
 
 logger = logging.getLogger(__name__)
 
-# パフォーマンス推定値（クラス変数）
+# モデル識別子マッピング（WhisperS2Tの_MODELSにないモデルはHuggingFaceパスで指定）
+MODEL_MAPPING = {
+    "tiny": "tiny",
+    "base": "base",
+    "small": "small",
+    "medium": "medium",
+    "large-v1": "large-v1",
+    "large-v2": "large-v2",
+    "large-v3": "large-v3",
+    "large-v3-turbo": "deepdml/faster-whisper-large-v3-turbo-ct2",
+    "distil-large-v3": "Systran/faster-distil-whisper-large-v3",
+}
+
+VALID_MODEL_SIZES = frozenset(MODEL_MAPPING.keys())
+VALID_COMPUTE_TYPES = frozenset({"auto", "int8", "int8_float16", "float16", "float32"})
+
+# 128メルバンクが必要なモデル（v3ベース）
+MODELS_REQUIRING_128_MELS = frozenset({"large-v3", "large-v3-turbo", "distil-large-v3"})
+
+# CPU速度推定値
 CPU_SPEED_ESTIMATES = {
     'base': '3-5x real-time',
-    'large-v3': '0.1-0.3x real-time (VERY SLOW)'
+    'large-v3': '0.1-0.3x real-time (VERY SLOW)',
+    'large-v3-turbo': '~0.5x real-time',
 }
 
 
@@ -33,16 +54,51 @@ class WhisperS2TEngine(BaseEngine):
         device: Optional[str] = None,
         # カテゴリA: ユーザー向けパラメータ（EngineMetadata.default_params で定義）
         language: str = "ja",
-        model_size: str = "base",
+        model_size: str = "large-v3",  # benchmark互換性維持（旧whispers2t_large_v3がデフォルト）
+        compute_type: str = "auto",
         batch_size: int = 24,
         use_vad: bool = True,
         **kwargs,
     ):
-        """エンジンを初期化"""
-        # モデルサイズを設定してengine_nameを設定（BaseEngine初期化前に必要）
-        self.engine_name = f'whispers2t_{model_size}'
+        """エンジンを初期化
+
+        Args:
+            device: 使用するデバイス（cpu/cuda/auto）
+            language: 言語コード（ISO 639-1の2文字コード、または地域コード）
+            model_size: モデルサイズ（tiny/base/small/medium/large-v1/large-v2/large-v3/large-v3-turbo/distil-large-v3）
+            compute_type: 量子化タイプ（auto/int8/int8_float16/float16/float32）
+            batch_size: バッチサイズ
+            use_vad: VADを使用するかどうか
+        """
+        # 入力バリデーション
+        if model_size not in VALID_MODEL_SIZES:
+            raise ValueError(
+                f"Unsupported model_size: {model_size}. "
+                f"Valid options: {', '.join(sorted(VALID_MODEL_SIZES))}"
+            )
+        if compute_type not in VALID_COMPUTE_TYPES:
+            raise ValueError(
+                f"Unsupported compute_type: {compute_type}. "
+                f"Valid options: {', '.join(sorted(VALID_COMPUTE_TYPES))}"
+            )
+
+        # 言語コードの変換とバリデーション
+        # 1. UI言語コード（zh-CN等）→ ASR言語コード（zh等）への変換
+        lang_info = Languages.get_info(language)
+        asr_language = lang_info.asr_code if lang_info else language
+
+        # 2. WHISPER_LANGUAGES_SET でバリデーション（O(1) lookup）
+        if asr_language not in WHISPER_LANGUAGES_SET:
+            raise ValueError(
+                f"Unsupported language: {language}. "
+                f"WhisperS2T supports 99 languages. See: https://github.com/openai/whisper"
+            )
+
+        # engine_name を統一（旧: f'whispers2t_{model_size}'）
+        self.engine_name = "whispers2t"
         self.model_size = model_size
-        self.language = language
+        self.language = language  # 元のコードを保持（ログ/デバッグ用）
+        self._asr_language = asr_language  # 変換後のコード（transcribe()で使用）
         self.batch_size = batch_size
         self.use_vad = use_vad
 
@@ -51,11 +107,18 @@ class WhisperS2TEngine(BaseEngine):
         os.environ['CUDNN_BENCHMARK'] = '0'
 
         # デバイスの自動検出と設定（共通関数を使用）
-        self.device, self.compute_type = detect_device(device, "WhisperS2T")
+        # detect_device() は Tuple[str, str] を返すため、最初の要素のみ使用
+        # 注: #166 完了後は戻り値が str になる
+        device_result = detect_device(device, "WhisperS2T")
+        self.device = device_result[0] if isinstance(device_result, tuple) else device_result
 
-        # large-v3モデル使用時の警告
-        if self.model_size == 'large-v3' and self.device == 'cpu':
-            logger.warning("⚠️ WhisperS2T Large-v3 on CPU will be VERY SLOW! Consider using GPU or smaller model.")
+        # compute_type の解決（autoの場合はデバイスに応じて最適化）
+        self.compute_type = self._resolve_compute_type(compute_type)
+
+        # 大型モデル使用時の警告
+        if self.model_size in ('large-v3', 'large-v3-turbo', 'distil-large-v3') and self.device == 'cpu':
+            speed_estimate = CPU_SPEED_ESTIMATES.get(self.model_size, 'SLOW')
+            logger.warning(f"⚠️ WhisperS2T {self.model_size} on CPU will be {speed_estimate}! Consider using GPU or smaller model.")
 
         # BaseEngine初期化（get_model_metadata()が呼ばれる）
         # detect_deviceで取得した正しいdevice値を渡す（Noneではなく）
@@ -74,22 +137,55 @@ class WhisperS2TEngine(BaseEngine):
         if self.device == 'cuda':
             logger.info(f"✅ WhisperS2T {model_size} engine initialized (GPU mode: {self.compute_type})")
         else:
-            logger.info(f"WhisperS2T {model_size} engine initialized (CPU mode)")
+            logger.info(f"WhisperS2T {model_size} engine initialized (CPU mode: {self.compute_type})")
+
+    def _resolve_compute_type(self, compute_type: str) -> str:
+        """compute_typeを解決（autoの場合はデバイスに応じて最適化）"""
+        if compute_type != "auto":
+            return compute_type  # ユーザー指定を尊重
+        # auto: CPU→int8（1.5倍高速）、GPU→float16
+        return "int8" if self.device == "cpu" else "float16"
+
+    def _get_n_mels(self) -> int:
+        """モデルサイズに応じた n_mels 値を取得"""
+        return 128 if self.model_size in MODELS_REQUIRING_128_MELS else 80
+
+    def _get_model_identifier(self) -> str:
+        """モデルサイズを WhisperS2T 用の識別子に変換"""
+        return MODEL_MAPPING.get(self.model_size, self.model_size)
     
     def get_model_metadata(self) -> Dict[str, Any]:
         """モデルメタデータを取得"""
         descriptions = {
+            'tiny': 'Whisper Tiny - Fastest, lowest accuracy',
             'base': 'Whisper Base - Good balance',
-            'large-v3': 'Whisper Large v3 - Best accuracy'
+            'small': 'Whisper Small - Better accuracy',
+            'medium': 'Whisper Medium - High accuracy',
+            'large-v1': 'Whisper Large v1 - Original large model',
+            'large-v2': 'Whisper Large v2 - Improved large model',
+            'large-v3': 'Whisper Large v3 - Best accuracy',
+            'large-v3-turbo': 'Whisper Large v3 Turbo - 8x faster than v3',
+            'distil-large-v3': 'Distil Whisper Large v3 - 6x faster, ~1% WER increase',
         }
+
+        # バージョン判定
+        if 'v3' in self.model_size:
+            version = 'v3'
+        elif 'v2' in self.model_size:
+            version = 'v2'
+        elif 'v1' in self.model_size:
+            version = 'v1'
+        else:
+            version = 'v2'  # tiny/base/small/medium はv2相当
 
         return {
             'name': f'openai/whisper-{self.model_size}',
-            'version': 'v3' if 'v3' in self.model_size else 'v2',
+            'version': version,
             'format': 'ct2',
             'language': 'multilingual',
-            'description': descriptions.get(self.model_size, descriptions['base']),
-            'model_size': self.model_size
+            'description': descriptions.get(self.model_size, f'Whisper {self.model_size}'),
+            'model_size': self.model_size,
+            'n_mels': self._get_n_mels(),
         }
     
     def _check_dependencies(self) -> None:
@@ -144,47 +240,56 @@ class WhisperS2TEngine(BaseEngine):
             self.report_progress(90, self.get_status_message("loading_from_memory_cache"))
             return cached_model
 
-        if self.model_size == 'large-v3' and self.device == 'cpu':
-            logger.warning("📊 WhisperS2T Large-v3 requires ~10GB system memory on CPU")
+        # 大型モデル使用時のメモリ警告
+        if self.model_size in ('large-v3', 'large-v3-turbo', 'distil-large-v3') and self.device == 'cpu':
+            logger.warning("📊 WhisperS2T large model requires ~10GB system memory on CPU")
 
         self.report_progress(75, self.get_status_message("initializing_model", engine_name="WhisperS2T", model_name=self.model_size))
-        
+
+        # モデル識別子を取得（HuggingFaceパスへの変換）
+        model_identifier = self._get_model_identifier()
+        n_mels = self._get_n_mels()
+
         try:
-            # WhisperS2Tモデルをロード
+            # WhisperS2Tモデルをロード（n_mels を明示的に指定）
             model = whisper_s2t.load_model(
-                model_identifier=self.model_size,
+                model_identifier=model_identifier,
                 backend='CTranslate2',
                 device=self.device,
-                compute_type=self.compute_type
+                compute_type=self.compute_type,
+                n_mels=n_mels,  # v3ベースモデルには128を指定
             )
-            
+
             self.report_progress(85, self.get_status_message("initialization_success", engine_name="WhisperS2T"))
 
             # キャッシュに保存
             ModelMemoryCache.set(cache_key, model, strong=True)
 
             if self.device == 'cuda':
-                logger.info(f"✅ WhisperS2T {self.model_size} loaded on GPU")
-            elif self.model_size == 'large-v3':
-                logger.info(f"📊 WhisperS2T {self.model_size} on CPU: {CPU_SPEED_ESTIMATES.get(self.model_size)}")
+                logger.info(f"✅ WhisperS2T {self.model_size} loaded on GPU (n_mels={n_mels})")
+            else:
+                speed_estimate = CPU_SPEED_ESTIMATES.get(self.model_size, '')
+                if speed_estimate:
+                    logger.info(f"📊 WhisperS2T {self.model_size} on CPU: {speed_estimate}")
 
             self.report_progress(90, self.get_status_message("model_ready_simple", engine_name="WhisperS2T"))
             return model
-            
+
         except Exception as e:
             if "cuDNN" in str(e) and self.device == 'cuda':
                 logger.warning(f"cuDNN error detected, falling back to CPU: {e}")
                 self.device = 'cpu'
-                self.compute_type = 'float32'
+                self.compute_type = 'int8'  # CPU fallback でも int8 を使用
 
                 model = whisper_s2t.load_model(
-                    model_identifier=self.model_size,
+                    model_identifier=model_identifier,
                     backend='CTranslate2',
                     device='cpu',
-                    compute_type='float32'
+                    compute_type='int8',
+                    n_mels=n_mels,
                 )
 
-                ModelMemoryCache.set(f"whispers2t_{self.model_size}_cpu_float32", model, strong=True)
+                ModelMemoryCache.set(f"whispers2t_{self.model_size}_cpu_int8", model, strong=True)
                 self.report_progress(90, self.get_status_message("model_ready_cpu_mode", engine_name="WhisperS2T"))
                 return model
             else:
@@ -264,18 +369,8 @@ class WhisperS2TEngine(BaseEngine):
             return "", 1.0
             
         try:
-            # 入力言語を取得（self.language を使用）
-            input_language = self.language
-
-            # WhisperS2T用の言語コードに変換
-            # WhisperS2Tは'zh-CN'や'zh-TW'を受け付けず、'zh'のみをサポート
-            lang_info = Languages.get_info(input_language)
-            if lang_info:
-                # Languages.pyのasr_codeを使用（zh-CN/zh-TW → zh への変換が定義済み）
-                whisper_language = lang_info.asr_code
-            else:
-                # 言語情報が見つからない場合は元のコードを使用（後方互換性）
-                whisper_language = input_language
+            # 言語コードは __init__ で変換済み（_asr_language を使用）
+            whisper_language = self._asr_language
 
             # 一時ファイルを作成
             if self._enable_profiling:
@@ -406,17 +501,24 @@ class WhisperS2TEngine(BaseEngine):
         logger.info(f"  Real-time factor: {total_time / 1000 / audio_duration:.2f}x")
 
     def get_engine_name(self) -> str:
-        """エンジン名を取得"""
+        """エンジン名を取得（ユーザー向け表示用）"""
         size_map = {
+            'tiny': 'Tiny',
             'base': 'Base',
-            'large-v3': 'Large-v3'
+            'small': 'Small',
+            'medium': 'Medium',
+            'large-v1': 'Large-v1',
+            'large-v2': 'Large-v2',
+            'large-v3': 'Large-v3',
+            'large-v3-turbo': 'Large-v3 Turbo',
+            'distil-large-v3': 'Distil Large-v3',
         }
         return f"WhisperS2T {size_map.get(self.model_size, self.model_size.title())}"
-        
+
     def get_supported_languages(self) -> list:
         """サポートされる言語のリストを取得"""
-        # WhisperS2Tは多言語対応
-        return ["ja", "en", "zh", "ko", "es", "fr", "de", "ru", "ar", "pt", "it", "hi"]
+        # WhisperS2Tは99言語対応
+        return list(WHISPER_LANGUAGES)
         
     def get_required_sample_rate(self) -> int:
         """エンジンが要求するサンプリングレートを取得"""

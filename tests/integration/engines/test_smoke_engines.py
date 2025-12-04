@@ -61,6 +61,7 @@ class EngineSmokeCase:
     device: str | None
     requires_gpu: bool = False
     min_vram_gb: float | None = None  # Minimum VRAM required in GB
+    model_size: str | None = None  # Model size for WhisperS2T
 
 
 @dataclass(frozen=True)
@@ -77,10 +78,11 @@ CASES: list[EngineSmokeCase] = [
     # See PR #34 for details. It is tested on GPU self-hosted runners instead.
     EngineSmokeCase(
         id="whispers2t_cpu_en",
-        engine="whispers2t_base",
+        engine="whispers2t",
         language="en",
         audio_stem="en/librispeech_1089-134686-0001",
         device="cpu",
+        model_size="base",
     ),
     # ==========================================================================
     # GPU Tests - Japanese Engines (self-hosted runners)
@@ -108,11 +110,12 @@ CASES: list[EngineSmokeCase] = [
     # ==========================================================================
     EngineSmokeCase(
         id="whispers2t_base_gpu_en",
-        engine="whispers2t_base",
+        engine="whispers2t",
         language="en",
         audio_stem="en/librispeech_1089-134686-0001",
         device="cuda",
         requires_gpu=True,
+        model_size="base",
     ),
     EngineSmokeCase(
         id="parakeet_gpu_en",
@@ -144,35 +147,39 @@ CASES: list[EngineSmokeCase] = [
     # ==========================================================================
     EngineSmokeCase(
         id="whispers2t_tiny_gpu_en",
-        engine="whispers2t_tiny",
+        engine="whispers2t",
         language="en",
         audio_stem="en/librispeech_1089-134686-0001",
         device="cuda",
         requires_gpu=True,
+        model_size="tiny",
     ),
     EngineSmokeCase(
         id="whispers2t_small_gpu_en",
-        engine="whispers2t_small",
+        engine="whispers2t",
         language="en",
         audio_stem="en/librispeech_1089-134686-0001",
         device="cuda",
         requires_gpu=True,
+        model_size="small",
     ),
     EngineSmokeCase(
         id="whispers2t_medium_gpu_en",
-        engine="whispers2t_medium",
+        engine="whispers2t",
         language="en",
         audio_stem="en/librispeech_1089-134686-0001",
         device="cuda",
         requires_gpu=True,
+        model_size="medium",
     ),
     EngineSmokeCase(
         id="whispers2t_large_v3_gpu_en",
-        engine="whispers2t_large_v3",
+        engine="whispers2t",
         language="en",
         audio_stem="en/librispeech_1089-134686-0001",
         device="cuda",
         requires_gpu=True,
+        model_size="large-v3",
         # min_vram_gb removed - testing if GPU memory cleanup resolves OOM
     ),
 ]
@@ -234,8 +241,11 @@ def _build_engine_options(case: EngineSmokeCase) -> dict:
     """Build engine options for the test case."""
     options = {}
     # Multi-language engines need language parameter
-    if case.engine.startswith("whispers2t_") or case.engine in ("canary", "voxtral"):
+    if case.engine in ("whispers2t", "canary", "voxtral"):
         options["language"] = case.language
+    # WhisperS2T model_size parameter
+    if case.model_size is not None:
+        options["model_size"] = case.model_size
     return options
 
 

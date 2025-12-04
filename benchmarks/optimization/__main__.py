@@ -3,7 +3,7 @@
 Usage:
     python -m benchmarks.optimization --vad silero --language ja
     python -m benchmarks.optimization --vad tenvad --language en --n-trials 100
-    python -m benchmarks.optimization --vad webrtc --language ja --engine whispers2t_large_v3
+    python -m benchmarks.optimization --vad webrtc --language ja --engine whispers2t
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ Examples:
   python -m benchmarks.optimization --vad silero --language ja
 
   # Optimize TenVAD for English with custom engine
-  python -m benchmarks.optimization --vad tenvad --language en --engine whispers2t_large_v3
+  python -m benchmarks.optimization --vad tenvad --language en --engine whispers2t
 
   # Increase trials for better convergence
   python -m benchmarks.optimization --vad webrtc --language ja --n-trials 100

@@ -63,9 +63,7 @@ class Languages:
             google_code="ja",
             translation_code="ja",
             asr_code="ja",
-            supported_engines=["reazonspeech", "whispers2t_base", "whispers2t_tiny",
-                               "whispers2t_small", "whispers2t_medium", "whispers2t_large_v3",
-                               "canary", "voxtral"],
+            supported_engines=["reazonspeech", "whispers2t", "parakeet_ja"],
             translation_services=["google", "riva"]
         ),
         "en": LanguageInfo(
@@ -80,9 +78,7 @@ class Languages:
             google_code="en",
             translation_code="en",
             asr_code="en",
-            supported_engines=["parakeet", "whispers2t_base", "whispers2t_tiny",
-                               "whispers2t_small", "whispers2t_medium", "whispers2t_large_v3",
-                               "canary", "voxtral"],
+            supported_engines=["parakeet", "whispers2t", "canary", "voxtral"],
             translation_services=["google", "riva"]
         ),
         "zh-CN": LanguageInfo(
@@ -97,8 +93,7 @@ class Languages:
             google_code="zh-CN",
             translation_code="zh-CN",
             asr_code="zh",
-            supported_engines=["whispers2t_base", "whispers2t_tiny", "whispers2t_small",
-                               "whispers2t_medium", "whispers2t_large_v3"],
+            supported_engines=["whispers2t"],
             translation_services=["google", "riva"]
         ),
         "zh-TW": LanguageInfo(
@@ -113,8 +108,7 @@ class Languages:
             google_code="zh-TW",
             translation_code="zh-TW",
             asr_code="zh",
-            supported_engines=["whispers2t_base", "whispers2t_tiny", "whispers2t_small",
-                               "whispers2t_medium", "whispers2t_large_v3"],
+            supported_engines=["whispers2t"],
             translation_services=["google", "riva"]
         ),
         "ko": LanguageInfo(
@@ -129,8 +123,7 @@ class Languages:
             google_code="ko",
             translation_code="ko",
             asr_code="ko",
-            supported_engines=["whispers2t_base", "whispers2t_tiny", "whispers2t_small",
-                               "whispers2t_medium", "whispers2t_large_v3"],
+            supported_engines=["whispers2t"],
             translation_services=["google", "riva"]
         ),
         "de": LanguageInfo(
@@ -145,8 +138,7 @@ class Languages:
             google_code="de",
             translation_code="de",
             asr_code="de",
-            supported_engines=["whispers2t_base", "whispers2t_tiny", "whispers2t_small",
-                               "whispers2t_medium", "whispers2t_large_v3", "canary", "voxtral"],
+            supported_engines=["whispers2t", "canary", "voxtral"],
             translation_services=["google", "riva"]
         ),
         "fr": LanguageInfo(
@@ -161,8 +153,7 @@ class Languages:
             google_code="fr",
             translation_code="fr",
             asr_code="fr",
-            supported_engines=["whispers2t_base", "whispers2t_tiny", "whispers2t_small",
-                               "whispers2t_medium", "whispers2t_large_v3", "canary", "voxtral"],
+            supported_engines=["whispers2t", "canary", "voxtral"],
             translation_services=["google", "riva"]
         ),
         "es": LanguageInfo(
@@ -177,8 +168,7 @@ class Languages:
             google_code="es",
             translation_code="es",
             asr_code="es",
-            supported_engines=["whispers2t_base", "whispers2t_tiny", "whispers2t_small",
-                               "whispers2t_medium", "whispers2t_large_v3", "canary", "voxtral"],
+            supported_engines=["whispers2t", "canary", "voxtral"],
             translation_services=["google", "riva"]
         ),
         "es-ES": LanguageInfo(
@@ -223,8 +213,7 @@ class Languages:
             google_code="ru",
             translation_code="ru",
             asr_code="ru",
-            supported_engines=["whispers2t_base", "whispers2t_tiny", "whispers2t_small",
-                               "whispers2t_medium", "whispers2t_large_v3"],
+            supported_engines=["whispers2t"],
             translation_services=["google", "riva"]
         ),
         "ar": LanguageInfo(
@@ -239,8 +228,7 @@ class Languages:
             google_code="ar",
             translation_code="ar",
             asr_code="ar",
-            supported_engines=["whispers2t_base", "whispers2t_tiny", "whispers2t_small",
-                               "whispers2t_medium", "whispers2t_large_v3"],
+            supported_engines=["whispers2t"],
             translation_services=["google", "riva"]
         ),
         "pt": LanguageInfo(
@@ -255,8 +243,7 @@ class Languages:
             google_code="pt",
             translation_code="pt",
             asr_code="pt",
-            supported_engines=["whispers2t_base", "whispers2t_tiny", "whispers2t_small",
-                               "whispers2t_medium", "whispers2t_large_v3"],
+            supported_engines=["whispers2t", "voxtral"],
             translation_services=["google", "riva"]
         ),
         "pt-BR": LanguageInfo(
@@ -286,8 +273,7 @@ class Languages:
             google_code="it",
             translation_code="it",
             asr_code="it",
-            supported_engines=["whispers2t_base", "whispers2t_tiny", "whispers2t_small",
-                               "whispers2t_medium", "whispers2t_large_v3"],
+            supported_engines=["whispers2t", "voxtral"],
             translation_services=["google"]
         ),
         "hi": LanguageInfo(
@@ -302,8 +288,7 @@ class Languages:
             google_code="hi",
             translation_code="hi",
             asr_code="hi",
-            supported_engines=["whispers2t_base", "whispers2t_tiny", "whispers2t_small",
-                               "whispers2t_medium", "whispers2t_large_v3"],
+            supported_engines=["whispers2t", "voxtral"],
             translation_services=["google"]
         ),
         "nl": LanguageInfo(
@@ -318,8 +303,7 @@ class Languages:
             google_code="nl",
             translation_code="nl",
             asr_code="nl",
-            supported_engines=["whispers2t_base", "whispers2t_tiny", "whispers2t_small",
-                               "whispers2t_medium", "whispers2t_large_v3"],
+            supported_engines=["whispers2t", "voxtral"],
             translation_services=["google"]
         ),
     }
