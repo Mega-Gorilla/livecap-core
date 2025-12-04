@@ -62,11 +62,12 @@ class WhisperS2TEngine(BaseEngine):
 
 | カテゴリ | ファイル数 | 主なパターン |
 |----------|-----------|--------------|
-| **tests/** | 4 | `whispers2t_base`, `whispers2t_large_v3` |
+| **tests/** | 4 | `whispers2t_base`, `whispers2t_large_v3`, `startswith("whispers2t_")` |
 | **examples/** | 4 | `whispers2t_base`, `startswith("whispers2t_")` |
 | **benchmarks/** | 3 | `whispers2t_large_v3`, `startswith("whispers2t_")` |
-| **CI** | 1 | `whispers2t_base` |
-| **docs/** | 17 | 各種言及 |
+| **CI** | 1 | `whispers2t_base`, `startswith("whispers2t_")` |
+| **docs/** | 15 | 各種言及（アーカイブ含む） |
+| **livecap_core/** | 2 | `library_preloader.py`, `languages.py` |
 
 ---
 
@@ -84,12 +85,14 @@ class WhisperS2TEngine(BaseEngine):
 
 ### 3.2 新規追加モデル
 
-| モデル | サイズ | 特徴 |
-|--------|--------|------|
-| `large-v1` | 1.55GB | 初代大型モデル |
-| `large-v2` | 1.55GB | v1の改良版 |
-| `large-v3-turbo` | ~1.6GB | v3ベース、8倍高速 (2024年10月リリース) |
-| `distil-large-v3` | ~756MB | v3比1%以内のWERで6倍高速 |
+| モデル | サイズ | 特徴 | CT2モデル |
+|--------|--------|------|-----------|
+| `large-v1` | 1.55GB | 初代大型モデル | 要確認 |
+| `large-v2` | 1.55GB | v1の改良版 | 要確認 |
+| `large-v3-turbo` | ~1.6GB | v3ベース、8倍高速 (2024年10月リリース) | [deepdml/faster-whisper-large-v3-turbo-ct2](https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2) |
+| `distil-large-v3` | ~756MB | v3比1%以内のWERで6倍高速 | [Systran/faster-distil-whisper-large-v3](https://huggingface.co/Systran/faster-distil-whisper-large-v3) |
+
+> **注意**: 新規追加モデルについては、CTranslate2変換済みモデルの存在を実装前に確認すること。
 
 ### 3.3 新規追加パラメータ: `compute_type`
 
@@ -106,6 +109,26 @@ CTranslate2 の量子化タイプを制御するパラメータ。
 **自動選択ロジック:**
 - CPU: `int8` (float32比で1.5倍高速、メモリ35%削減)
 - GPU: `float16` (標準的な精度と速度のバランス)
+
+### 3.4 入力バリデーション方針
+
+無効な `model_size` または `compute_type` が指定された場合の挙動：
+
+| パラメータ | 無効値の挙動 | 理由 |
+|-----------|-------------|------|
+| `model_size` | `ValueError` を送出 | ダウンロード失敗を防ぐため早期検出 |
+| `compute_type` | `ValueError` を送出 | ランタイムエラーを防ぐため早期検出 |
+
+```python
+VALID_MODEL_SIZES = {"tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3", "large-v3-turbo", "distil-large-v3"}
+VALID_COMPUTE_TYPES = {"auto", "int8", "int8_float16", "float16", "float32"}
+
+def __init__(self, ..., model_size: str = "base", compute_type: str = "auto", ...):
+    if model_size not in VALID_MODEL_SIZES:
+        raise ValueError(f"Invalid model_size: {model_size}. Valid: {VALID_MODEL_SIZES}")
+    if compute_type not in VALID_COMPUTE_TYPES:
+        raise ValueError(f"Invalid compute_type: {compute_type}. Valid: {VALID_COMPUTE_TYPES}")
+```
 
 ---
 
@@ -169,6 +192,9 @@ class EngineInfo:
 ### 4.3 Task 3: `whispers2t_engine.py` に `compute_type` パラメータ追加
 
 ```python
+VALID_MODEL_SIZES = {"tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3", "large-v3-turbo", "distil-large-v3"}
+VALID_COMPUTE_TYPES = {"auto", "int8", "int8_float16", "float16", "float32"}
+
 class WhisperS2TEngine(BaseEngine):
     def __init__(
         self,
@@ -180,7 +206,17 @@ class WhisperS2TEngine(BaseEngine):
         use_vad: bool = True,
         **kwargs,
     ):
-        self.device = detect_device(device, "WhisperS2T")  # str のみ受け取る（将来 #166 で対応）
+        # 入力バリデーション
+        if model_size not in VALID_MODEL_SIZES:
+            raise ValueError(f"Invalid model_size: {model_size}. Valid: {VALID_MODEL_SIZES}")
+        if compute_type not in VALID_COMPUTE_TYPES:
+            raise ValueError(f"Invalid compute_type: {compute_type}. Valid: {VALID_COMPUTE_TYPES}")
+
+        # detect_device() は Tuple[str, str] を返すため、最初の要素のみ使用
+        # 注: #166 完了後は戻り値が str になる
+        device_result = detect_device(device, "WhisperS2T")
+        self.device = device_result[0] if isinstance(device_result, tuple) else device_result
+
         self.compute_type = self._resolve_compute_type(compute_type)  # NEW
         # ...
 
@@ -195,59 +231,123 @@ class WhisperS2TEngine(BaseEngine):
         return "int8" if self.device == "cpu" else "float16"
 ```
 
-**注意:** 現時点では `detect_device()` の戻り値を引き続き受け取るが、`self.compute_type` は `_resolve_compute_type()` で上書きする。#166 で `detect_device()` をリファクタリング後、よりクリーンな実装になる。
+### 4.4 Task 4: `LibraryPreloader` 更新
 
-### 4.4 Task 4: 使用箇所の更新
+**ファイル:** `livecap_core/engines/library_preloader.py`
 
-#### 4.4.1 tests/
+`SharedEngineManager` は `engine_type.split('_')[0]` を渡すため、統合後は `start_preloading("whispers2t")` になる。
+現在の `_get_required_libraries` は `whispers2t_base` / `whispers2t_large_v3` 固定のため更新が必要。
+
+```python
+# Before (86-96行目)
+library_map = {
+    'parakeet': {'matplotlib', 'nemo'},
+    'parakeet_ja': {'matplotlib', 'nemo'},
+    'canary': {'matplotlib', 'nemo'},
+    'voxtral': {'transformers'},
+    'whispers2t_base': {'whisper_s2t'},      # ← 旧エンジンID
+    'whispers2t_large_v3': {'whisper_s2t'},  # ← 旧エンジンID
+    'reazonspeech': {'sherpa_onnx'},
+}
+
+# After
+library_map = {
+    'parakeet': {'matplotlib', 'nemo'},
+    'parakeet_ja': {'matplotlib', 'nemo'},
+    'canary': {'matplotlib', 'nemo'},
+    'voxtral': {'transformers'},
+    'whispers2t': {'whisper_s2t'},  # ← 統合エンジンID
+    'reazonspeech': {'sherpa_onnx'},
+}
+```
+
+### 4.5 Task 5: `languages.py` 更新
+
+**ファイル:** `livecap_core/languages.py`
+
+全16言語の `supported_engines` リストを更新:
+
+```python
+# Before (各言語で)
+supported_engines=["reazonspeech", "whispers2t_base", "whispers2t_tiny",
+                   "whispers2t_small", "whispers2t_medium", "whispers2t_large_v3",
+                   "canary", "voxtral"],
+
+# After
+supported_engines=["reazonspeech", "whispers2t", "canary", "voxtral"],
+```
+
+**対象言語:** ja, en, zh-CN, zh-TW, ko, de, fr, es, ru, ar, pt, it, hi, nl（計14言語）
+
+> **注意:** `Languages.get_engines_for_language()` の結果に影響するため、UI/CLIの言語→エンジン対応が正しく動作することを確認すること。
+
+### 4.6 Task 6: 使用箇所の更新
+
+#### 4.6.1 tests/
 
 | ファイル | 変更内容 |
 |----------|----------|
 | `core/engines/test_engine_factory.py` | `whispers2t_base` → `whispers2t` |
-| `integration/engines/test_smoke_engines.py` | 各バリエーションを `model_size` パラメータで指定 |
-| `integration/realtime/test_e2e_realtime_flow.py` | `whispers2t_base` → `whispers2t` |
+| `core/cli/test_cli.py` | CLI出力の期待値確認・更新 |
+| `integration/engines/test_smoke_engines.py` | 各バリエーションを `model_size` パラメータで指定、`startswith` 削除 |
+| `integration/realtime/test_e2e_realtime_flow.py` | `whispers2t_base` → `whispers2t`、`startswith` 削除 |
 | `asr/test_runner.py` | `whispers2t_large_v3` → `whispers2t` + `model_size="large-v3"` |
 | `vad/test_runner.py` | 同上 |
 
-#### 4.4.2 examples/
+#### 4.6.2 examples/
 
 | ファイル | 変更内容 |
 |----------|----------|
-| `realtime/basic_file_transcription.py` | `whispers2t_base` → `whispers2t` |
+| `realtime/basic_file_transcription.py` | `whispers2t_base` → `whispers2t`、`startswith` → `==` |
 | `realtime/async_microphone.py` | 同上 |
-| `realtime/callback_api.py` | 同上、`startswith("whispers2t_")` → `== "whispers2t"` |
+| `realtime/callback_api.py` | 同上 |
 | `realtime/custom_vad_config.py` | 同上 |
 
-#### 4.4.3 benchmarks/
+#### 4.6.3 benchmarks/
 
 | ファイル | 変更内容 |
 |----------|----------|
 | `asr/runner.py` | `whispers2t_large_v3` → `whispers2t` (+ model_size) |
 | `vad/runner.py` | 同上 |
-| `common/engines.py` | `startswith("whispers2t_")` → `== "whispers2t"` |
+| `common/engines.py` | `startswith("whispers2t_")` → `== "whispers2t"` (160行目) |
 
-#### 4.4.4 CI
+#### 4.6.4 CI
 
 | ファイル | 変更内容 |
 |----------|----------|
-| `.github/workflows/integration-tests.yml` | `whispers2t_base` → `whispers2t` |
+| `.github/workflows/integration-tests.yml` | `whispers2t_base` → `whispers2t`、`startswith` 削除 (158, 355行目) |
 
-#### 4.4.5 core
+#### 4.6.5 core
 
 | ファイル | 変更内容 |
 |----------|----------|
 | `livecap_core/engines/engine_factory.py` | docstring 更新 |
 | `livecap_core/engines/shared_engine_manager.py` | 必要に応じて更新 |
 
-### 4.5 Task 5: ドキュメント更新
+### 4.7 Task 7: ドキュメント更新
+
+**全文検索で置換・確認が必要なファイル:**
+
+```bash
+grep -r "whispers2t_" docs/ --include="*.md" | grep -v "archive/"
+```
 
 | ファイル | 変更内容 |
 |----------|----------|
 | `README.md` | 新しい使用方法に更新 |
 | `CLAUDE.md` | エンジン一覧更新 |
 | `docs/guides/realtime-transcription.md` | 使用例更新 |
+| `docs/guides/benchmark/asr-benchmark.md` | ベンチマーク使用例更新 |
+| `docs/guides/benchmark/vad-benchmark.md` | 同上 |
+| `docs/guides/benchmark/vad-optimization.md` | 同上 |
 | `docs/architecture/core-api-spec.md` | API 仕様更新 |
 | `docs/reference/feature-inventory.md` | エンジン一覧更新 |
+| `docs/reference/vad/config.md` | 使用例更新 |
+| `docs/reference/vad/comparison.md` | エンジン言及更新 |
+| `docs/planning/refactoring-plan.md` | 必要に応じて更新 |
+| `docs/planning/phase3-package-restructure.md` | 必要に応じて更新 |
+
+> **アーカイブ (`docs/planning/archive/*`)** は更新不要。
 
 ---
 
@@ -257,36 +357,52 @@ class WhisperS2TEngine(BaseEngine):
 Step 1: ブランチ作成
     git checkout -b feat/whispers2t-consolidation
     ↓
-Step 2: EngineInfo dataclass に available_model_sizes 追加
+Step 2: CT2モデル存在確認
+    新モデル (large-v1, large-v2, large-v3-turbo, distil-large-v3) の
+    CTranslate2変換済みモデルが利用可能か確認
+    ↓
+Step 3: EngineInfo dataclass に available_model_sizes 追加
     livecap_core/engines/metadata.py
     ↓
-Step 3: WhisperS2T エントリ統合 (5→1)
+Step 4: WhisperS2T エントリ統合 (5→1)
     - 5つのエントリを削除
     - 統合エントリを追加
     ↓
-Step 4: whispers2t_engine.py に compute_type 追加
+Step 5: whispers2t_engine.py 更新
     - compute_type パラメータ追加
     - _resolve_compute_type() メソッド追加
+    - 入力バリデーション追加
+    - detect_device() 戻り値のタプル対応
     ↓
-Step 5: テストコード更新
+Step 6: LibraryPreloader 更新
+    library_map に 'whispers2t' エントリ追加
+    ↓
+Step 7: languages.py 更新
+    全16言語の supported_engines を更新
+    ↓
+Step 8: テストコード更新
     - test_engine_factory.py
     - test_smoke_engines.py
     - test_e2e_realtime_flow.py
+    - test_cli.py (CLI出力確認)
     ↓
-Step 6: examples 更新 (4ファイル)
+Step 9: examples 更新 (4ファイル)
     ↓
-Step 7: benchmarks 更新 (3ファイル)
+Step 10: benchmarks 更新 (3ファイル)
     ↓
-Step 8: CI ワークフロー更新
+Step 11: CI ワークフロー更新
     ↓
-Step 9: テスト実行
+Step 12: テスト実行
     uv run pytest tests/ -v
     ↓
-Step 10: pip install -e . で確認
+Step 13: pip install -e . で確認
     ↓
-Step 11: ドキュメント更新 (5ファイル)
+Step 14: ドキュメント更新 (全文検索で漏れなく)
     ↓
-Step 12: PR 作成・レビュー・マージ
+Step 15: CLI出力確認
+    livecap-core --info で whispers2t が正しく表示されることを確認
+    ↓
+Step 16: PR 作成・レビュー・マージ
 ```
 
 ---
@@ -332,34 +448,51 @@ if engine_type in ("whispers2t", "canary", "voxtral"):
 
 ## 8. 検証項目
 
-### 8.1 単体テスト
+### 8.1 事前確認
+
+- [ ] 新モデル (`large-v1`, `large-v2`) の CT2 変換済みモデルが利用可能
+- [ ] 新モデル (`large-v3-turbo`, `distil-large-v3`) の CT2 変換済みモデルが利用可能
+
+### 8.2 単体テスト
 
 - [ ] `tests/core/engines/test_engine_factory.py` がパス
 - [ ] 全 `tests/core/` テストがパス
+- [ ] 入力バリデーションテスト（無効な model_size, compute_type）
 
-### 8.2 統合テスト
+### 8.3 統合テスト
 
 - [ ] `tests/integration/engines/test_smoke_engines.py` がパス
 - [ ] `tests/integration/realtime/test_e2e_realtime_flow.py` がパス
 - [ ] 全 `tests/integration/` テストがパス
 
-### 8.3 機能テスト
+### 8.4 機能テスト
 
 - [ ] `EngineFactory.create_engine("whispers2t")` が動作
 - [ ] `model_size` パラメータで各サイズが指定可能
-- [ ] `compute_type="auto"` がデバイスに応じて正しく解決される
+- [ ] `compute_type="auto"` がデバイスに応じて正しく解決される（CPU→int8, GPU→float16）
 - [ ] `compute_type` 明示指定が正しく反映される
+- [ ] 無効な `model_size` で `ValueError` が発生
+- [ ] 無効な `compute_type` で `ValueError` が発生
 - [ ] 新モデル (`large-v3-turbo`, `distil-large-v3`) の動作確認
+- [ ] `LibraryPreloader.start_preloading("whispers2t")` が正しく動作
 
-### 8.4 CLI
+### 8.5 言語マスター
+
+- [ ] `Languages.get_engines_for_language("ja")` に `whispers2t` が含まれる
+- [ ] `Languages.get_engines_for_language("en")` に `whispers2t` が含まれる
+- [ ] 旧エンジンID (`whispers2t_base` 等) が結果に含まれない
+
+### 8.6 CLI
 
 - [ ] `livecap-core --info` で `whispers2t` が表示される
+- [ ] `livecap-core --info` で旧エンジンID が表示されない
+- [ ] `tests/core/cli/test_cli.py` がパス
 
-### 8.5 Examples
+### 8.7 Examples
 
 - [ ] 全 examples が正常に動作
 
-### 8.6 CI
+### 8.8 CI
 
 - [ ] 全ワークフローがグリーン
 
@@ -371,7 +504,11 @@ if engine_type in ("whispers2t", "canary", "voxtral"):
 - [ ] `EngineInfo` に `available_model_sizes` フィールドが追加されている
 - [ ] `whispers2t_engine.py` に `compute_type` パラメータが追加されている
 - [ ] `_resolve_compute_type()` で自動最適化が実装されている
-- [ ] 全使用箇所が更新されている
+- [ ] `model_size` と `compute_type` の入力バリデーションが実装されている
+- [ ] `detect_device()` のタプル戻り値が正しく処理されている
+- [ ] `LibraryPreloader` が `whispers2t` に対応している
+- [ ] `languages.py` の全言語で `supported_engines` が更新されている
+- [ ] 全使用箇所が更新されている（全文検索で確認）
 - [ ] 全テストがパス
 - [ ] ドキュメントが更新されている
 - [ ] CI が全てグリーン
@@ -382,9 +519,12 @@ if engine_type in ("whispers2t", "canary", "voxtral"):
 
 | リスク | レベル | 対策 |
 |--------|--------|------|
-| 使用箇所の更新漏れ | 中 | grep で網羅的に検索、テストで検出 |
-| 新モデルの動作不良 | 低 | smoke test で確認 |
-| compute_type の誤設定 | 低 | ユニットテストでカバー |
+| 使用箇所の更新漏れ | 中 | `grep -r "whispers2t_"` で網羅的に検索、テストで検出 |
+| 新モデルのCT2モデル不在 | 中 | 実装前にHugging Faceで存在確認 |
+| detect_device() タプル処理ミス | 中 | 型チェックで安全に処理 |
+| LibraryPreloader 事前ロード失敗 | 中 | 統合テストで確認 |
+| languages.py 更新漏れ | 中 | 全言語をリストアップして確認 |
+| compute_type の誤設定 | 低 | バリデーションとユニットテストでカバー |
 | CI 失敗 | 中 | ローカルで全テスト実行後に PR 作成 |
 
 ---
@@ -394,6 +534,7 @@ if engine_type in ("whispers2t", "canary", "voxtral"):
 - **#166**: `detect_device()` リファクタリング（本 Issue 完了後に実施）
   - 戻り値を `Tuple[str, str]` → `str` に変更
   - `compute_type` は WhisperS2T 内部で解決するため不要に
+  - 本 Issue では暫定対処（タプルの最初の要素を使用）
 
 ---
 
@@ -412,3 +553,4 @@ if engine_type in ("whispers2t", "canary", "voxtral"):
 | 日付 | 変更内容 |
 |------|----------|
 | 2025-12-04 | 初版作成 |
+| 2025-12-04 | レビュー対応: LibraryPreloader更新追加、languages.py更新追加、detect_device()タプル処理明記、入力バリデーション追加、CT2モデル確認手順追加、ドキュメント網羅性向上、CLIテスト確認追加 |
