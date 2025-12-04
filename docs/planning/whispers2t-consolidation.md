@@ -20,12 +20,14 @@
 | **モデル追加の手間** | 新モデル追加時に新エントリが必要 | 中 |
 | **一貫性の欠如** | 他のエンジンはパラメータで切り替え可能 | 低 |
 | **compute_type の最適化不足** | CPU で `float32` 使用（`int8` が1.5倍高速） | 中 |
+| **言語サポートの制限** | Whisper公式99言語のうち13言語のみ定義 | 中 |
 
 ### 1.2 目標
 
 1. **5つのエントリを1つに統合**: `whispers2t` + `model_size` パラメータ
 2. **新モデルの追加**: large-v1, large-v2, large-v3-turbo, distil-large-v3
 3. **compute_type パラメータ追加**: デフォルト `auto` でデバイス最適化
+4. **言語サポート拡張**: Whisper公式99言語を全てサポート
 
 ---
 
@@ -110,25 +112,35 @@ CTranslate2 の量子化タイプを制御するパラメータ。
 - CPU: `int8` (float32比で1.5倍高速、メモリ35%削減)
 - GPU: `float16` (標準的な精度と速度のバランス)
 
-### 3.4 入力バリデーション方針
+### 3.4 言語サポート拡張
 
-無効な `model_size` または `compute_type` が指定された場合の挙動：
+Whisper公式の99言語を全てサポート。
+
+**設計方針:**
+
+| 項目 | 方針 |
+|------|------|
+| **定義場所** | `metadata.py` に `WHISPER_LANGUAGES` を一箇所で定義 |
+| **supported_languages** | `WHISPER_LANGUAGES` をそのまま使用（他エンジンと同じパターン） |
+| **バリデーション** | 一致しなければ `ValueError`（正規化なし） |
+| **エラーメッセージ** | シンプルに `"Unsupported language: {lang}"` |
+
+**責務分離:**
+
+| レイヤー | 責務 |
+|---------|------|
+| **Languages クラス** | 入力の正規化（"zh-CN" → "zh" 等）、UI表示 |
+| **WhisperS2TEngine** | `WHISPER_LANGUAGES` に含まれるか検証するのみ |
+
+### 3.5 入力バリデーション方針
+
+無効な `model_size`、`compute_type`、`language` が指定された場合の挙動：
 
 | パラメータ | 無効値の挙動 | 理由 |
 |-----------|-------------|------|
 | `model_size` | `ValueError` を送出 | ダウンロード失敗を防ぐため早期検出 |
 | `compute_type` | `ValueError` を送出 | ランタイムエラーを防ぐため早期検出 |
-
-```python
-VALID_MODEL_SIZES = {"tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3", "large-v3-turbo", "distil-large-v3"}
-VALID_COMPUTE_TYPES = {"auto", "int8", "int8_float16", "float16", "float32"}
-
-def __init__(self, ..., model_size: str = "base", compute_type: str = "auto", ...):
-    if model_size not in VALID_MODEL_SIZES:
-        raise ValueError(f"Invalid model_size: {model_size}. Valid: {VALID_MODEL_SIZES}")
-    if compute_type not in VALID_COMPUTE_TYPES:
-        raise ValueError(f"Invalid compute_type: {compute_type}. Valid: {VALID_COMPUTE_TYPES}")
-```
+| `language` | `ValueError` を送出 | Whisper実行エラーを防ぐため早期検出 |
 
 ---
 
@@ -158,14 +170,32 @@ class EngineInfo:
 
 ### 4.2 Task 2: `metadata.py` の WhisperS2T エントリ統合
 
-5つのエントリを1つに統合し、`compute_type` を追加:
+**4.2.1 `WHISPER_LANGUAGES` 定数を追加:**
+
+```python
+# Whisper公式99言語（tokenizer.pyより）
+WHISPER_LANGUAGES = [
+    "en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr", "pl",
+    "ca", "nl", "ar", "sv", "it", "id", "hi", "fi", "vi", "he", "uk",
+    "el", "ms", "cs", "ro", "da", "hu", "ta", "no", "th", "ur", "hr",
+    "bg", "lt", "la", "mi", "ml", "cy", "sk", "te", "fa", "lv", "bn",
+    "sr", "az", "sl", "kn", "et", "mk", "br", "eu", "is", "hy", "ne",
+    "mn", "bs", "kk", "sq", "sw", "gl", "mr", "pa", "si", "km", "sn",
+    "yo", "so", "af", "oc", "ka", "be", "tg", "sd", "gu", "am", "yi",
+    "lo", "uz", "fo", "ht", "ps", "tk", "nn", "mt", "sa", "lb", "my",
+    "bo", "tl", "mg", "as", "tt", "haw", "ln", "ha", "ba", "jw", "su",
+    "yue",
+]
+```
+
+**4.2.2 5つのエントリを1つに統合:**
 
 ```python
 "whispers2t": EngineInfo(
     id="whispers2t",
     display_name="WhisperS2T",
     description="Multilingual ASR model with selectable model sizes (tiny to large-v3-turbo)",
-    supported_languages=["ja", "en", "zh-CN", "zh-TW", "ko", "de", "fr", "es", "ru", "ar", "pt", "it", "hi"],
+    supported_languages=WHISPER_LANGUAGES,  # 99言語
     requires_download=True,
     model_size=None,  # 複数サイズ対応のため None
     device_support=["cpu", "cuda"],
@@ -182,18 +212,24 @@ class EngineInfo:
     ],
     default_params={
         "model_size": "base",
-        "compute_type": "auto",  # NEW: デフォルトは自動最適化
+        "compute_type": "auto",
         "batch_size": 24,
         "use_vad": True,
     },
 ),
 ```
 
-### 4.3 Task 3: `whispers2t_engine.py` に `compute_type` パラメータ追加
+### 4.3 Task 3: `whispers2t_engine.py` 更新
 
 ```python
-VALID_MODEL_SIZES = {"tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3", "large-v3-turbo", "distil-large-v3"}
-VALID_COMPUTE_TYPES = {"auto", "int8", "int8_float16", "float16", "float32"}
+from .metadata import WHISPER_LANGUAGES
+
+VALID_MODEL_SIZES = frozenset({
+    "tiny", "base", "small", "medium",
+    "large-v1", "large-v2", "large-v3",
+    "large-v3-turbo", "distil-large-v3",
+})
+VALID_COMPUTE_TYPES = frozenset({"auto", "int8", "int8_float16", "float16", "float32"})
 
 class WhisperS2TEngine(BaseEngine):
     def __init__(
@@ -201,23 +237,27 @@ class WhisperS2TEngine(BaseEngine):
         device: Optional[str] = None,
         language: str = "ja",
         model_size: str = "base",
-        compute_type: str = "auto",  # NEW
+        compute_type: str = "auto",
         batch_size: int = 24,
         use_vad: bool = True,
         **kwargs,
     ):
         # 入力バリデーション
+        if language not in WHISPER_LANGUAGES:
+            raise ValueError(f"Unsupported language: {language}")
         if model_size not in VALID_MODEL_SIZES:
-            raise ValueError(f"Invalid model_size: {model_size}. Valid: {VALID_MODEL_SIZES}")
+            raise ValueError(f"Unsupported model_size: {model_size}")
         if compute_type not in VALID_COMPUTE_TYPES:
-            raise ValueError(f"Invalid compute_type: {compute_type}. Valid: {VALID_COMPUTE_TYPES}")
+            raise ValueError(f"Unsupported compute_type: {compute_type}")
+
+        self.language = language
 
         # detect_device() は Tuple[str, str] を返すため、最初の要素のみ使用
         # 注: #166 完了後は戻り値が str になる
         device_result = detect_device(device, "WhisperS2T")
         self.device = device_result[0] if isinstance(device_result, tuple) else device_result
 
-        self.compute_type = self._resolve_compute_type(compute_type)  # NEW
+        self.compute_type = self._resolve_compute_type(compute_type)
         # ...
 
     def _resolve_compute_type(self, compute_type: str) -> str:
@@ -265,7 +305,7 @@ library_map = {
 
 **ファイル:** `livecap_core/languages.py`
 
-全16言語の `supported_engines` リストを更新:
+`supported_engines` から `whispers2t_*` を削除し、`whispers2t` に統一:
 
 ```python
 # Before (各言語で)
@@ -364,45 +404,49 @@ Step 2: CT2モデル存在確認
 Step 3: EngineInfo dataclass に available_model_sizes 追加
     livecap_core/engines/metadata.py
     ↓
-Step 4: WhisperS2T エントリ統合 (5→1)
-    - 5つのエントリを削除
-    - 統合エントリを追加
+Step 4: WHISPER_LANGUAGES 定数追加
+    livecap_core/engines/metadata.py
     ↓
-Step 5: whispers2t_engine.py 更新
+Step 5: WhisperS2T エントリ統合 (5→1)
+    - 5つのエントリを削除
+    - 統合エントリを追加（supported_languages=WHISPER_LANGUAGES）
+    ↓
+Step 6: whispers2t_engine.py 更新
+    - language バリデーション追加
     - compute_type パラメータ追加
     - _resolve_compute_type() メソッド追加
-    - 入力バリデーション追加
+    - model_size, compute_type バリデーション追加
     - detect_device() 戻り値のタプル対応
     ↓
-Step 6: LibraryPreloader 更新
+Step 7: LibraryPreloader 更新
     library_map に 'whispers2t' エントリ追加
     ↓
-Step 7: languages.py 更新
-    全16言語の supported_engines を更新
+Step 8: languages.py 更新
+    全14言語の supported_engines を更新
     ↓
-Step 8: テストコード更新
+Step 9: テストコード更新
     - test_engine_factory.py
     - test_smoke_engines.py
     - test_e2e_realtime_flow.py
     - test_cli.py (CLI出力確認)
     ↓
-Step 9: examples 更新 (4ファイル)
+Step 10: examples 更新 (4ファイル)
     ↓
-Step 10: benchmarks 更新 (3ファイル)
+Step 11: benchmarks 更新 (3ファイル)
     ↓
-Step 11: CI ワークフロー更新
+Step 12: CI ワークフロー更新
     ↓
-Step 12: テスト実行
+Step 13: テスト実行
     uv run pytest tests/ -v
     ↓
-Step 13: pip install -e . で確認
+Step 14: pip install -e . で確認
     ↓
-Step 14: ドキュメント更新 (全文検索で漏れなく)
+Step 15: ドキュメント更新 (全文検索で漏れなく)
     ↓
-Step 15: CLI出力確認
+Step 16: CLI出力確認
     livecap-core --info で whispers2t が正しく表示されることを確認
     ↓
-Step 16: PR 作成・レビュー・マージ
+Step 17: PR 作成・レビュー・マージ
 ```
 
 ---
@@ -412,12 +456,17 @@ Step 16: PR 作成・レビュー・マージ
 ```python
 from livecap_core import EngineFactory, EngineMetadata
 
-# 基本使用（デフォルト: base, compute_type=auto）
+# 基本使用（デフォルト: base, compute_type=auto, language=ja）
 engine = EngineFactory.create_engine("whispers2t", device="cuda")
 
 # モデルサイズ指定
 engine = EngineFactory.create_engine("whispers2t", device="cuda", model_size="large-v3")
 engine = EngineFactory.create_engine("whispers2t", device="cuda", model_size="large-v3-turbo")
+
+# 言語指定（99言語対応）
+engine = EngineFactory.create_engine("whispers2t", device="cuda", language="vi")  # Vietnamese
+engine = EngineFactory.create_engine("whispers2t", device="cuda", language="th")  # Thai
+engine = EngineFactory.create_engine("whispers2t", device="cuda", language="yue") # Cantonese
 
 # compute_type 明示指定（上級ユーザー向け）
 engine = EngineFactory.create_engine("whispers2t", device="cpu", compute_type="int8")
@@ -428,6 +477,9 @@ engine = EngineFactory.create_engine("whispers2t", device="cuda", compute_type="
 info = EngineMetadata.get("whispers2t")
 print(info.available_model_sizes)
 # ["tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3", "large-v3-turbo", "distil-large-v3"]
+
+# 対応言語の確認
+print(len(info.supported_languages))  # 99
 ```
 
 ---
@@ -457,7 +509,7 @@ if engine_type in ("whispers2t", "canary", "voxtral"):
 
 - [ ] `tests/core/engines/test_engine_factory.py` がパス
 - [ ] 全 `tests/core/` テストがパス
-- [ ] 入力バリデーションテスト（無効な model_size, compute_type）
+- [ ] 入力バリデーションテスト（無効な model_size, compute_type, language）
 
 ### 8.3 統合テスト
 
@@ -476,23 +528,32 @@ if engine_type in ("whispers2t", "canary", "voxtral"):
 - [ ] 新モデル (`large-v3-turbo`, `distil-large-v3`) の動作確認
 - [ ] `LibraryPreloader.start_preloading("whispers2t")` が正しく動作
 
-### 8.5 言語マスター
+### 8.5 言語サポート
+
+- [ ] `EngineFactory.create_engine("whispers2t", language="ja")` が動作
+- [ ] `EngineFactory.create_engine("whispers2t", language="vi")` が動作（新規言語）
+- [ ] `EngineFactory.create_engine("whispers2t", language="yue")` が動作（広東語）
+- [ ] 無効な言語コード（例: `"xxx"`）で `ValueError` が発生
+- [ ] `EngineMetadata.get("whispers2t").supported_languages` が99言語を含む
+- [ ] `EngineMetadata.get_engines_for_language("ja")` に `whispers2t` が含まれる
+- [ ] `EngineMetadata.get_engines_for_language("vi")` に `whispers2t` が含まれる
+
+### 8.6 languages.py
 
 - [ ] `Languages.get_engines_for_language("ja")` に `whispers2t` が含まれる
-- [ ] `Languages.get_engines_for_language("en")` に `whispers2t` が含まれる
 - [ ] 旧エンジンID (`whispers2t_base` 等) が結果に含まれない
 
-### 8.6 CLI
+### 8.7 CLI
 
 - [ ] `livecap-core --info` で `whispers2t` が表示される
 - [ ] `livecap-core --info` で旧エンジンID が表示されない
 - [ ] `tests/core/cli/test_cli.py` がパス
 
-### 8.7 Examples
+### 8.8 Examples
 
 - [ ] 全 examples が正常に動作
 
-### 8.8 CI
+### 8.9 CI
 
 - [ ] 全ワークフローがグリーン
 
@@ -500,11 +561,14 @@ if engine_type in ("whispers2t", "canary", "voxtral"):
 
 ## 9. 完了条件
 
+- [ ] `WHISPER_LANGUAGES` 定数が99言語を含む
 - [ ] `metadata.py` の WhisperS2T エントリが1つに統合されている
+- [ ] `supported_languages` が `WHISPER_LANGUAGES` を使用している
 - [ ] `EngineInfo` に `available_model_sizes` フィールドが追加されている
+- [ ] `whispers2t_engine.py` に言語バリデーションが追加されている
 - [ ] `whispers2t_engine.py` に `compute_type` パラメータが追加されている
 - [ ] `_resolve_compute_type()` で自動最適化が実装されている
-- [ ] `model_size` と `compute_type` の入力バリデーションが実装されている
+- [ ] `model_size`、`compute_type`、`language` の入力バリデーションが実装されている
 - [ ] `detect_device()` のタプル戻り値が正しく処理されている
 - [ ] `LibraryPreloader` が `whispers2t` に対応している
 - [ ] `languages.py` の全言語で `supported_engines` が更新されている
@@ -525,6 +589,7 @@ if engine_type in ("whispers2t", "canary", "voxtral"):
 | LibraryPreloader 事前ロード失敗 | 中 | 統合テストで確認 |
 | languages.py 更新漏れ | 中 | 全言語をリストアップして確認 |
 | compute_type の誤設定 | 低 | バリデーションとユニットテストでカバー |
+| 無効言語コードの検出漏れ | 低 | シンプルな `in` チェックで確実に検出 |
 | CI 失敗 | 中 | ローカルで全テスト実行後に PR 作成 |
 
 ---
@@ -541,6 +606,8 @@ if engine_type in ("whispers2t", "canary", "voxtral"):
 ## 12. 参考資料
 
 - [WhisperS2T GitHub](https://github.com/shashikg/WhisperS2T)
+- [OpenAI Whisper GitHub](https://github.com/openai/whisper)
+- [Whisper tokenizer.py (言語リスト)](https://github.com/openai/whisper/blob/main/whisper/tokenizer.py)
 - [faster-whisper GitHub](https://github.com/SYSTRAN/faster-whisper)
 - [CTranslate2 Quantization](https://opennmt.net/CTranslate2/quantization.html)
 - [deepdml/faster-whisper-large-v3-turbo-ct2](https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2)
@@ -554,3 +621,4 @@ if engine_type in ("whispers2t", "canary", "voxtral"):
 |------|----------|
 | 2025-12-04 | 初版作成 |
 | 2025-12-04 | レビュー対応: LibraryPreloader更新追加、languages.py更新追加、detect_device()タプル処理明記、入力バリデーション追加、CT2モデル確認手順追加、ドキュメント網羅性向上、CLIテスト確認追加 |
+| 2025-12-04 | 言語サポート拡張: WHISPER_LANGUAGES定数追加（99言語）、supported_languagesを直接使用、言語バリデーション追加、検証項目拡充 |
