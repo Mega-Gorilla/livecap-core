@@ -91,7 +91,7 @@ class WhisperS2TEngine(BaseEngine):
         if asr_language not in WHISPER_LANGUAGES_SET:
             raise ValueError(
                 f"Unsupported language: {language}. "
-                f"WhisperS2T supports 99 languages. See: https://github.com/openai/whisper"
+                f"WhisperS2T supports 100 languages. See: https://github.com/openai/whisper"
             )
 
         # engine_name を統一（旧: f'whispers2t_{model_size}'）
@@ -517,7 +517,7 @@ class WhisperS2TEngine(BaseEngine):
 
     def get_supported_languages(self) -> list:
         """サポートされる言語のリストを取得"""
-        # WhisperS2Tは99言語対応
+        # WhisperS2Tは100言語対応
         return list(WHISPER_LANGUAGES)
         
     def get_required_sample_rate(self) -> int:
