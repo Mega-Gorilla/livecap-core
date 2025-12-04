@@ -238,6 +238,70 @@ model = whisper_s2t.load_model(
 )
 ```
 
+### 3.7 設計決定事項 (2025-12-04 決定)
+
+実装前の不明点を洗い出し、以下の方針で決定。
+
+**3.7.1 engine_name の統一**
+
+| 項目 | Before | After |
+|------|--------|-------|
+| `self.engine_name` | `f'whispers2t_{model_size}'` | `"whispers2t"` |
+
+**理由:**
+- 統合の目的は「5つのエントリを1つにまとめる」こと
+- キャッシュキーには `model_size` が含まれるので区別可能
+- ユーザー向け表示は `get_engine_name()` で対応
+
+**3.7.2 デフォルト model_size**
+
+| 項目 | 値 | 理由 |
+|------|-----|------|
+| `default_params["model_size"]` | `"large-v3"` | benchmark 互換性維持（現在 `whispers2t_large_v3` がデフォルト） |
+
+**3.7.3 benchmark / examples の更新方針**
+
+| カテゴリ | Before | After | 備考 |
+|----------|--------|-------|------|
+| benchmark runner | `whispers2t_large_v3` | `whispers2t` | デフォルト `large-v3` で互換性維持 |
+| benchmark tests | `assert "whispers2t_large_v3"` | `assert "whispers2t"` | |
+| examples デフォルト | `whispers2t_base` | `whispers2t` | シンプルに統一 |
+
+**3.7.4 追加更新箇所**
+
+| ファイル | 更新内容 |
+|---------|----------|
+| `engine_factory.py` | docstring のエンジン一覧を更新 |
+| `whispers2t_engine.py` | `get_supported_languages()` で `WHISPER_LANGUAGES` を使用 |
+| `whispers2t_engine.py` | `CPU_SPEED_ESTIMATES` に主要モデルを追加 |
+| `whispers2t_engine.py` | `get_engine_name()` の `size_map` を拡張 |
+
+**3.7.5 CPU_SPEED_ESTIMATES 拡張**
+
+```python
+CPU_SPEED_ESTIMATES = {
+    'base': '3-5x real-time',
+    'large-v3': '0.1-0.3x real-time (VERY SLOW)',
+    'large-v3-turbo': '~0.5x real-time',
+}
+```
+
+**3.7.6 size_map 拡張**
+
+```python
+size_map = {
+    'tiny': 'Tiny',
+    'base': 'Base',
+    'small': 'Small',
+    'medium': 'Medium',
+    'large-v1': 'Large-v1',
+    'large-v2': 'Large-v2',
+    'large-v3': 'Large-v3',
+    'large-v3-turbo': 'Large-v3 Turbo',
+    'distil-large-v3': 'Distil Large-v3',
+}
+```
+
 ---
 
 ## 4. 実装タスク
@@ -307,7 +371,7 @@ WHISPER_LANGUAGES = [
         "large-v3-turbo", "distil-large-v3",
     ],
     default_params={
-        "model_size": "base",
+        "model_size": "large-v3",  # benchmark互換性維持（旧whispers2t_large_v3がデフォルト）
         "compute_type": "auto",
         "batch_size": 24,
         "use_vad": True,
@@ -339,17 +403,27 @@ VALID_COMPUTE_TYPES = frozenset({"auto", "int8", "int8_float16", "float16", "flo
 # 128メルバンクが必要なモデル（v3ベース）
 MODELS_REQUIRING_128_MELS = frozenset({"large-v3", "large-v3-turbo", "distil-large-v3"})
 
+# CPU速度推定値
+CPU_SPEED_ESTIMATES = {
+    'base': '3-5x real-time',
+    'large-v3': '0.1-0.3x real-time (VERY SLOW)',
+    'large-v3-turbo': '~0.5x real-time',
+}
+
 class WhisperS2TEngine(BaseEngine):
     def __init__(
         self,
         device: Optional[str] = None,
         language: str = "ja",
-        model_size: str = "base",
+        model_size: str = "large-v3",  # benchmark互換性維持
         compute_type: str = "auto",
         batch_size: int = 24,
         use_vad: bool = True,
         **kwargs,
     ):
+        # engine_name を統一（旧: f'whispers2t_{model_size}'）
+        self.engine_name = "whispers2t"
+
         # 入力バリデーション
         if language not in WHISPER_LANGUAGES:
             raise ValueError(f"Unsupported language: {language}")
@@ -395,6 +469,19 @@ class WhisperS2TEngine(BaseEngine):
             n_mels=self._get_n_mels(),  # v3ベースモデルには128を指定
         )
         return model
+
+    def get_supported_languages(self) -> list:
+        """サポートされる言語のリストを取得"""
+        return list(WHISPER_LANGUAGES)
+
+    def get_engine_name(self) -> str:
+        """エンジン名を取得（ユーザー向け表示用）"""
+        size_map = {
+            'tiny': 'Tiny', 'base': 'Base', 'small': 'Small', 'medium': 'Medium',
+            'large-v1': 'Large-v1', 'large-v2': 'Large-v2', 'large-v3': 'Large-v3',
+            'large-v3-turbo': 'Large-v3 Turbo', 'distil-large-v3': 'Distil Large-v3',
+        }
+        return f"WhisperS2T {size_map.get(self.model_size, self.model_size.title())}"
 ```
 
 ### 4.4 Task 4: `LibraryPreloader` 更新
@@ -457,8 +544,17 @@ supported_engines=["reazonspeech", "whispers2t", "canary", "voxtral"],
 | `core/cli/test_cli.py` | CLI出力の期待値確認・更新 |
 | `integration/engines/test_smoke_engines.py` | 各バリエーションを `model_size` パラメータで指定、`startswith` 削除 |
 | `integration/realtime/test_e2e_realtime_flow.py` | `whispers2t_base` → `whispers2t`、`startswith` 削除 |
-| `asr/test_runner.py` | `whispers2t_large_v3` → `whispers2t` + `model_size="large-v3"` |
-| `vad/test_runner.py` | 同上 |
+| `benchmark_tests/asr/test_runner.py` | `whispers2t_large_v3` → `whispers2t`（assert文更新） |
+| `benchmark_tests/vad/test_runner.py` | 同上 |
+
+**benchmark テスト assert 文の変更例:**
+```python
+# Before
+assert engines == ["parakeet_ja", "whispers2t_large_v3"]
+
+# After (デフォルト model_size="large-v3" により互換性維持)
+assert engines == ["parakeet_ja", "whispers2t"]
+```
 
 #### 4.6.2 examples/
 
@@ -690,21 +786,38 @@ if engine_type in ("whispers2t", "canary", "voxtral"):
 
 ## 9. 完了条件
 
+### 9.1 metadata.py
 - [ ] `WHISPER_LANGUAGES` 定数が99言語を含む
-- [ ] `metadata.py` の WhisperS2T エントリが1つに統合されている
+- [ ] WhisperS2T エントリが1つに統合されている（`"whispers2t"`）
 - [ ] `supported_languages` が `WHISPER_LANGUAGES` を使用している
 - [ ] `EngineInfo` に `available_model_sizes` フィールドが追加されている
-- [ ] `whispers2t_engine.py` に言語バリデーションが追加されている
-- [ ] `whispers2t_engine.py` に `compute_type` パラメータが追加されている
+- [ ] デフォルト `model_size` が `"large-v3"` に設定されている
+
+### 9.2 whispers2t_engine.py
+- [ ] `engine_name` が `"whispers2t"` に統一されている
+- [ ] 言語バリデーションが追加されている
+- [ ] `compute_type` パラメータが追加されている
 - [ ] `_resolve_compute_type()` で自動最適化が実装されている
 - [ ] `MODEL_MAPPING` でHuggingFaceパス変換が実装されている
 - [ ] `_get_n_mels()` でv3ベースモデルに128が設定される
 - [ ] `model_size`、`compute_type`、`language` の入力バリデーションが実装されている
 - [ ] `detect_device()` のタプル戻り値が正しく処理されている
+- [ ] `get_supported_languages()` が `WHISPER_LANGUAGES` を返す
+- [ ] `get_engine_name()` の `size_map` が全モデルサイズを含む
+- [ ] `CPU_SPEED_ESTIMATES` が主要モデルを含む
+
+### 9.3 関連ファイル
 - [ ] `LibraryPreloader` が `whispers2t` に対応している
 - [ ] `languages.py` の全言語で `supported_engines` が更新されている
-- [ ] 全使用箇所が更新されている（全文検索で確認）
+- [ ] `engine_factory.py` の docstring が更新されている
+- [ ] benchmark runner/tests が更新されている
+- [ ] examples が更新されている
+- [ ] CI ワークフローが更新されている
+
+### 9.4 検証
+- [ ] 全使用箇所が更新されている（`grep -r "whispers2t_"` で確認）
 - [ ] 全テストがパス
+- [ ] benchmark テストがパス（デフォルト `large-v3` で互換性維持）
 - [ ] ドキュメントが更新されている
 - [ ] CI が全てグリーン
 
@@ -754,3 +867,4 @@ if engine_type in ("whispers2t", "canary", "voxtral"):
 | 2025-12-04 | レビュー対応: LibraryPreloader更新追加、languages.py更新追加、detect_device()タプル処理明記、入力バリデーション追加、CT2モデル確認手順追加、ドキュメント網羅性向上、CLIテスト確認追加 |
 | 2025-12-04 | 言語サポート拡張: WHISPER_LANGUAGES定数追加（99言語）、supported_languagesを直接使用、言語バリデーション追加、検証項目拡充 |
 | 2025-12-04 | WhisperS2T調査結果追加: モデル識別子マッピング（MODEL_MAPPING）、n_mels設定（v3ベースは128）、CT2モデル存在確認済み、ローカルテスト結果追加 |
+| 2025-12-04 | 設計決定事項追加（セクション3.7）: engine_name統一("whispers2t")、デフォルトmodel_size="large-v3"（benchmark互換性維持）、benchmark/examples更新方針、CPU_SPEED_ESTIMATES/size_map拡張、完了条件の詳細化 |
