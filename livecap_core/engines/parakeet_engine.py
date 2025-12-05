@@ -119,7 +119,7 @@ class ParakeetEngine(BaseEngine):
         self.model = None
 
         # デバイスの自動検出と設定（共通関数を使用）
-        self.torch_device, _ = detect_device(device, "Parakeet")
+        self.torch_device = detect_device(device, "Parakeet")
         
     def _check_dependencies(self) -> None:
         """

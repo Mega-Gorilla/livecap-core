@@ -90,7 +90,7 @@ class CanaryEngine(BaseEngine):
         self._initialized = False
 
         # デバイスの自動検出と設定（共通関数を使用）
-        self.torch_device, _ = detect_device(device, "Canary")
+        self.torch_device = detect_device(device, "Canary")
 
         # ライブラリ事前ロードを開始
         LibraryPreloader.start_preloading('canary')

@@ -106,10 +106,7 @@ class WhisperS2TEngine(BaseEngine):
         os.environ['CUDNN_BENCHMARK'] = '0'
 
         # デバイスの自動検出と設定（共通関数を使用）
-        # detect_device() は Tuple[str, str] を返すため、最初の要素のみ使用
-        # 注: #166 完了後は戻り値が str になる
-        device_result = detect_device(device, "WhisperS2T")
-        self.device = device_result[0] if isinstance(device_result, tuple) else device_result
+        self.device = detect_device(device, "WhisperS2T")
 
         # compute_type の解決（autoの場合はデバイスに応じて最適化）
         self.compute_type = self._resolve_compute_type(compute_type)
