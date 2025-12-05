@@ -13,7 +13,7 @@
 
 `languages.py`（646行）を廃止し、必要最小限の機能のみを `metadata.py` に統合する。
 
-**削減効果**: 646行 → 約15行（純削減 ~630行）
+**削減効果**: 646行 → 約5行（純削減 ~640行）
 
 ---
 
@@ -36,7 +36,7 @@
 
 - **ISO 639-1 変換**: `"zh-CN"` → `"zh"`（地域コードの除去）
 
-これは **10行のマッピングテーブル + 1行の関数** で実現可能。
+これは **langcodes ライブラリ** で実現可能（約5行）。
 
 ---
 
@@ -66,7 +66,7 @@ WhisperS2T: WHISPER_LANGUAGES_SET でチェック → エラー or 成功
 **ポイント**:
 - **正規化は行わない**: `ZH-CN` のような不正入力はエラーで対処（暗黙の変換は危険）
 - **バリデーションは各エンジンに委譲**: Single Source of Truth は各エンジンの `supported_languages`
-- **最小限のマッピング**: 変換が必要なのは地域コード付き言語のみ（10エントリ）
+- **langcodes ライブラリ使用**: BCP-47 → ISO 639-1 変換を標準ライブラリに委譲
 
 ### 3.3 関数名の設計
 
@@ -83,18 +83,20 @@ WhisperS2T: WHISPER_LANGUAGES_SET でチェック → エラー or 成功
 
 ### 3.4 ライブラリ調査結果
 
-言語コード変換用ライブラリを調査した結果、**ライブラリを使わない**ことを決定：
+言語コード変換用ライブラリを調査した結果、**langcodes を採用**：
 
 | ライブラリ | 最新版 | 判断 |
 |-----------|--------|------|
-| [langcodes](https://pypi.org/project/langcodes/) | 3.5.1 (2025-12) | BCP-47完全対応だが、今回は不要 |
-| [pycountry](https://github.com/pycountry/pycountry) | - | ISO全般、重すぎる |
-| [iso639-lang](https://pypi.org/project/iso639-lang/) | 2025-07 | 今回のユースケースには過剰 |
+| [langcodes](https://pypi.org/project/langcodes/) | 3.5.1 (2025-12) | **採用** - BCP-47完全対応、軽量 |
+| [pycountry](https://github.com/pycountry/pycountry) | - | 不採用 - ISO全般、重すぎる |
+| [iso639-lang](https://pypi.org/project/iso639-lang/) | 2025-07 | 不採用 - 今回のユースケースには過剰 |
 
-**理由**:
-1. 必要な変換は10エントリのマッピングのみ
-2. 依存関係を増やしたくない
-3. ライブラリの挙動変更リスクを避ける
+**langcodes 採用理由**:
+1. **エッジケース対応**: `zh-Hans`（スクリプトサブタグ）等も正しく処理
+2. **コード削減**: マッピングテーブル不要、約5行で実装可能
+3. **メンテナンスフリー**: 新しい地域コードへの対応が不要
+4. **標準準拠**: BCP-47/ISO 639 の正式な解析
+5. **軽量**: 純Python、追加依存なし
 
 ---
 
@@ -104,34 +106,47 @@ WhisperS2T: WHISPER_LANGUAGES_SET でチェック → エラー or 成功
 
 | ファイル | 変更内容 |
 |---------|----------|
+| `pyproject.toml` | `langcodes` 依存を追加 |
 | `livecap_core/languages.py` | **削除** |
 | `livecap_core/__init__.py` | `Languages` エクスポート削除 |
-| `livecap_core/engines/metadata.py` | `to_iso639_1()` を追加（~15行） |
+| `livecap_core/engines/metadata.py` | `to_iso639_1()` を追加（~5行） |
 | `livecap_core/engines/whispers2t_engine.py` | `EngineMetadata.to_iso639_1()` を使用 |
 | `docs/architecture/core-api-spec.md` | `Languages` セクション削除 |
 | `docs/reference/feature-inventory.md` | 言語API更新 |
 
-### 4.2 metadata.py への追加コード
+### 4.2 pyproject.toml への追加
+
+```toml
+[project]
+dependencies = [
+    # ... 既存の依存 ...
+    "langcodes>=3.4.0",
+]
+```
+
+### 4.3 metadata.py への追加コード
 
 ```python
-# BCP-47 → ISO 639-1 変換マッピング
-_REGION_TO_BASE: Dict[str, str] = {
-    "zh-CN": "zh", "zh-TW": "zh",
-    "pt-BR": "pt", "pt-PT": "pt",
-    "es-ES": "es", "es-US": "es",
-    "fr-FR": "fr", "fr-CA": "fr",
-    "en-US": "en", "en-GB": "en",
-}
+import langcodes
 
 @classmethod
 def to_iso639_1(cls, code: str) -> str:
-    """BCP-47 地域コードを ISO 639-1 に変換。マッピングにない場合はそのまま返す。"""
-    return cls._REGION_TO_BASE.get(code, code)
+    """BCP-47 言語コードを ISO 639-1 に変換。"""
+    return langcodes.Language.get(code).language
 ```
 
-**追加行数**: 約15行（マッピング10行 + 関数5行）
+**追加行数**: 約5行（import 1行 + 関数4行）
 
-### 4.3 whispers2t_engine.py の修正
+**対応例**:
+```python
+to_iso639_1("zh-CN")    # → "zh"
+to_iso639_1("zh-TW")    # → "zh"
+to_iso639_1("zh-Hans")  # → "zh" (スクリプトサブタグも対応)
+to_iso639_1("pt-BR")    # → "pt"
+to_iso639_1("ja")       # → "ja"
+```
+
+### 4.4 whispers2t_engine.py の修正
 
 ```python
 # Before
@@ -146,7 +161,7 @@ from .metadata import EngineMetadata
 asr_language = EngineMetadata.to_iso639_1(language)
 ```
 
-### 4.4 get_engines_for_language() の修正
+### 4.5 get_engines_for_language() の修正
 
 ```python
 # Before（languages.py に依存）
@@ -202,9 +217,9 @@ iso_code = EngineMetadata.to_iso639_1("ja")     # "ja"
 ## 6. 実装順序
 
 ```
-Phase A: metadata.py に機能追加
-  1. _REGION_TO_BASE マッピングを追加
-  2. to_iso639_1() を追加
+Phase A: 依存追加と機能実装
+  1. pyproject.toml に langcodes 依存を追加
+  2. metadata.py に to_iso639_1() を追加
 
 Phase B: 依存を切り替え
   3. whispers2t_engine.py を EngineMetadata.to_iso639_1() に移行
@@ -221,7 +236,8 @@ Phase C: 削除
 
 ## 7. 完了条件
 
-- [ ] `EngineMetadata.to_iso639_1()` が実装されている
+- [ ] `pyproject.toml` に `langcodes` 依存が追加されている
+- [ ] `EngineMetadata.to_iso639_1()` が実装されている（langcodes 使用）
 - [ ] `whispers2t_engine.py` が `EngineMetadata.to_iso639_1()` を使用している
 - [ ] `EngineMetadata.get_engines_for_language()` が自己完結している
 - [ ] `languages.py` が削除されている
@@ -238,7 +254,6 @@ Phase C: 削除
 | 機能 | 用途 | 実装時期 |
 |------|------|---------|
 | `to_bcp47()` | NVIDIA RIVA 統合時（ISO 639-1 → BCP-47） | Phase 4 以降 |
-| `langcodes` 採用 | 大規模多言語対応時 | 未定 |
 
 ---
 
