@@ -90,7 +90,7 @@ class VoxtralEngine(BaseEngine):
         self.processor = None
 
         # デバイスの自動検出と設定（共通関数を使用）
-        self.torch_device, self.device_str = detect_device(device, "Voxtral")
+        self.torch_device = detect_device(device, "Voxtral")
 
         # GPU RAM警告
         if self.torch_device == "cuda":

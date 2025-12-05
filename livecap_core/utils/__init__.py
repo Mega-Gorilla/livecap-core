@@ -8,7 +8,7 @@ import shutil
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
 from livecap_core.resources import get_model_manager
 
@@ -35,33 +35,39 @@ def get_temp_dir(purpose: str = "runtime") -> Path:
     return _model_manager().get_temp_dir(purpose)
 
 
-def detect_device(requested_device: Optional[str], engine_name: str) -> Tuple[str, str]:
+def detect_device(requested_device: Optional[str], engine_name: str) -> str:
     """
-    Resolve which compute device an engine should use.
+    デバイスを検出して返す。
 
-    Returns: (device, compute_type)
+    Args:
+        requested_device: 要求されたデバイス ("cuda", "cpu", None=auto)
+        engine_name: エンジン名（ログ用）
+
+    Returns:
+        使用するデバイス ("cuda" または "cpu")
     """
     logger = logging.getLogger(__name__)
 
-    if requested_device not in ("cpu",):
-        try:
-            import torch
+    if requested_device == "cpu":
+        logger.info("Using CPU for %s (explicitly requested).", engine_name)
+        return "cpu"
 
-            version = torch.__version__
-            if torch.cuda.is_available():
-                device = "cuda"
-                compute_type = "float16"
-                logger.info("Using CUDA for %s (PyTorch %s).", engine_name, version)
-                return device, compute_type
+    try:
+        import torch
 
-            if "+cpu" in version:
-                logger.warning("PyTorch CPU build detected (%s); falling back to CPU for %s.", version, engine_name)
-            else:
-                logger.warning("CUDA unavailable (PyTorch %s); falling back to CPU for %s.", version, engine_name)
-        except ImportError:
-            logger.warning("PyTorch not installed; using CPU for %s.", engine_name)
+        version = torch.__version__
+        if torch.cuda.is_available():
+            logger.info("Using CUDA for %s (PyTorch %s).", engine_name, version)
+            return "cuda"
 
-    return "cpu", "float32"
+        if "+cpu" in version:
+            logger.warning("PyTorch CPU build detected (%s); falling back to CPU for %s.", version, engine_name)
+        else:
+            logger.warning("CUDA unavailable (PyTorch %s); falling back to CPU for %s.", version, engine_name)
+    except ImportError:
+        logger.warning("PyTorch not installed; using CPU for %s.", engine_name)
+
+    return "cpu"
 
 
 def _override_temp_environment(temp_dir: Path):
