@@ -111,6 +111,13 @@ WhisperS2T: WHISPER_LANGUAGES_SET でチェック → エラー or 成功
 | BCP-47 → ISO 639-1 | **`to_iso639_1()`** | 標準規格名で変換先が明確 |
 | ISO 639-1 → BCP-47 | `to_bcp47()` | 将来実装時（RIVA等） |
 
+**ISO 639-3（3文字コード）の扱い**:
+- `to_iso639_1()` は langcodes の `language` サブタグを返す
+- ISO 639-1（2文字）が存在しない言語は ISO 639-3（3文字）を返す
+- 例: `yue`（粵語/Cantonese）、`haw`（ハワイ語）
+- Whisper は `yue` 等の3文字コードを明示的にサポート（`WHISPER_LANGUAGES` に含まれる）
+- **実装方針**: 3文字コードも許容。バリデーションは各エンジンの `supported_languages` で行う。
+
 **廃止した候補**:
 - `to_asr_code()`: 「ASR」は用途であり、変換形式ではない
 - `to_google_code()`: Google Translate は現在 ISO 639-1 を受け付けるため不要
