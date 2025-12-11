@@ -11,14 +11,18 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
+# Import dependencies at module level to enable conditional import in __init__.py
+# This allows `impl/__init__.py` to catch ImportError when deps are missing
+import ctranslate2
+import transformers
+
 from ..base import BaseTranslator
 from ..exceptions import TranslationModelError, UnsupportedLanguagePairError
 from ..lang_codes import get_opus_mt_model_name, to_iso639_1
 from ..result import TranslationResult
 
 if TYPE_CHECKING:
-    import ctranslate2
-    import transformers
+    pass  # Type-only imports go here if needed
 
 logger = logging.getLogger(__name__)
 
@@ -82,9 +86,6 @@ class OpusMTTranslator(BaseTranslator):
         Raises:
             TranslationModelError: モデルのロードまたは変換に失敗した場合
         """
-        import ctranslate2
-        import transformers
-
         from livecap_core.utils import get_models_dir
 
         # CTranslate2 形式に変換されたモデルのディレクトリ
