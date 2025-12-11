@@ -546,6 +546,119 @@ class RivaInstructTranslator(BaseTranslator):
         )
 ```
 
+## GPU メモリ管理
+
+### 問題の背景
+
+ASR エンジンと翻訳エンジンを同時に GPU にロードする場合、VRAM の競合が発生する可能性がある。
+
+### メモリ使用量の見積もり
+
+| コンポーネント | VRAM 使用量 |
+|---------------|------------|
+| Whisper Base (ASR) | ~150MB |
+| Whisper Large-v3 (ASR) | ~3GB |
+| Canary 1B (ASR) | ~2.5GB |
+| OPUS-MT (per pair) | ~500MB |
+| Riva-Translate-4B-Instruct | ~8GB (fp16) |
+
+**最悪ケース**: Whisper Large-v3 (3GB) + Riva-4B (8GB) = **11GB VRAM**
+
+### デフォルトデバイス戦略
+
+| 翻訳エンジン | デフォルト | 理由 |
+|-------------|-----------|------|
+| Google Translate | N/A | API ベース、GPU 不要 |
+| OPUS-MT | **CPU** | 軽量（~500MB）、CPU 上でも十分高速 |
+| Riva-4B-Instruct | **GPU** | LLM のため GPU 推奨、CPU では低速 |
+
+### TranslatorMetadata の拡張
+
+```python
+@dataclass
+class TranslatorInfo:
+    # ... 既存フィールド ...
+    default_device: Optional[str] = None     # デフォルトデバイス
+    gpu_vram_required_mb: int = 0            # 必要 VRAM (MB)
+    cpu_fallback_warning: bool = False       # CPU フォールバック時の警告
+
+class TranslatorMetadata:
+    _TRANSLATORS = {
+        "google": TranslatorInfo(
+            # ... 既存 ...
+            default_device=None,
+            gpu_vram_required_mb=0,
+        ),
+        "opus_mt": TranslatorInfo(
+            # ... 既存 ...
+            default_device="cpu",            # CPU 推奨
+            gpu_vram_required_mb=500,
+        ),
+        "riva_instruct": TranslatorInfo(
+            # ... 既存 ...
+            default_device="cuda",
+            gpu_vram_required_mb=8000,
+            cpu_fallback_warning=True,       # CPU だと低速
+        ),
+    }
+```
+
+### VRAM 確認ユーティリティ
+
+`livecap_core/utils/__init__.py` に追加：
+
+```python
+def get_available_vram() -> Optional[int]:
+    """利用可能な VRAM（MB）を返す。GPU がない場合は None。"""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            free, total = torch.cuda.mem_get_info()
+            return free // (1024 * 1024)
+    except ImportError:
+        pass
+    return None
+
+def can_fit_on_gpu(required_mb: int, safety_margin: float = 0.9) -> bool:
+    """指定サイズが GPU に収まるか確認。"""
+    available = get_available_vram()
+    if available is None:
+        return False
+    return available * safety_margin >= required_mb
+```
+
+### 推奨構成パターン
+
+| ユースケース | ASR | Translator | 必要 VRAM |
+|-------------|-----|-----------|----------|
+| **軽量リアルタイム** | Whisper Base (GPU) | Google (N/A) | ~150MB |
+| **高品質オフライン** | Whisper Large-v3 (GPU) | OPUS-MT (CPU) | ~3GB |
+| **完全ローカル高品質** | Whisper Base (GPU) | Riva-4B (GPU) | ~8.5GB |
+| **CPU 専用** | ReazonSpeech (CPU) | OPUS-MT (CPU) | 0 |
+| **最高品質** | Whisper Large-v3 (GPU) | Riva-4B (GPU) | ~11GB |
+
+### 実装方針
+
+1. **明示的なデバイス指定**: ユーザーが `device` パラメータで制御可能
+   ```python
+   engine = EngineFactory.create_engine("whispers2t_base", device="cuda")
+   translator = TranslatorFactory.create_translator("opus_mt", device="cpu")
+   ```
+
+2. **OPUS-MT は CPU デフォルト**: CTranslate2 の int8 量子化により CPU でも十分高速
+
+3. **Riva-4B は警告付き GPU デフォルト**: VRAM 不足時は明確なエラーメッセージ
+   ```python
+   if device == "cuda" and not can_fit_on_gpu(8000):
+       logger.warning(
+           "Riva-4B requires ~8GB VRAM. Current available: %dMB. "
+           "Consider using device='cpu' or 'opus_mt' translator.",
+           get_available_vram()
+       )
+   ```
+
+4. **ドキュメントで推奨構成を明記**: ユーザーの GPU 環境に応じた構成例を提供
+
 ## 依存関係
 
 ### pyproject.toml 更新
@@ -687,6 +800,7 @@ def test_streamtranscriber_with_translation():
 | `livecap_core/translation/impl/opus_mt.py` | 新規 | OpusMTTranslator |
 | `livecap_core/translation/impl/riva_instruct.py` | 新規 | RivaInstructTranslator |
 | `livecap_core/__init__.py` | 更新 | Translation exports |
+| `livecap_core/utils/__init__.py` | 更新 | VRAM 確認ユーティリティ追加 |
 | `pyproject.toml` | 更新 | 依存関係追加 |
 | `tests/core/translation/` | 新規 | ユニットテスト |
 | `tests/integration/test_translation_pipeline.py` | 新規 | 統合テスト |
@@ -697,7 +811,8 @@ def test_streamtranscriber_with_translation():
 |--------|------|------|
 | Google Translate レート制限 | 高頻度使用で失敗 | リトライ + バックオフ |
 | OPUS-MT モデル変換失敗 | 初回起動が遅い | 事前変換済みモデル提供 |
-| Riva-4B VRAM 不足 | GPU 8GB 必要 | 明確なエラーメッセージ |
+| Riva-4B VRAM 不足 | GPU 8GB 必要 | 明確なエラーメッセージ + 警告 |
+| ASR + Riva-4B 同時ロード | VRAM 超過 | OPUS-MT CPU デフォルト、構成ガイド |
 | 文脈抽出の精度 | 翻訳結果から対象文を特定困難 | 区切り文字の工夫 |
 
 ## 完了条件
@@ -708,6 +823,8 @@ def test_streamtranscriber_with_translation():
 - [ ] OpusMTTranslator が動作する（モデルロード含む）
 - [ ] RivaInstructTranslator が動作する（GPU 環境）
 - [ ] 文脈挿入が全エンジンで機能する
+- [ ] VRAM 確認ユーティリティが追加されている
+- [ ] VRAM 不足時の警告が実装されている
 - [ ] ユニットテストがパスする
 - [ ] 統合テストがパスする
 - [ ] `livecap_core` から export されている
