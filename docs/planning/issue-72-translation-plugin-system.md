@@ -98,9 +98,23 @@ from typing import List, Optional, Tuple
 class TranslationResult:
     """翻訳結果"""
     text: str                          # 翻訳テキスト
+    original_text: str                 # 原文（イベント型との整合性）
     source_lang: str                   # ソース言語
     target_lang: str                   # ターゲット言語
     confidence: Optional[float] = None # 信頼度（LLMの場合）
+    source_id: str = "default"         # ソース識別子
+
+    def to_event_dict(self) -> "TranslationResultEventDict":
+        """既存の TranslationResultEventDict に変換"""
+        from livecap_core.transcription_types import create_translation_result_event
+        return create_translation_result_event(
+            original_text=self.original_text,
+            translated_text=self.text,
+            source_id=self.source_id,
+            source_language=self.source_lang,
+            target_language=self.target_lang,
+            confidence=self.confidence,
+        )
 
 class BaseTranslator(ABC):
     """翻訳エンジンの抽象基底クラス"""
@@ -348,6 +362,7 @@ class GoogleTranslator(BaseTranslator):
 
         return TranslationResult(
             text=result,
+            original_text=text,
             source_lang=source_lang,
             target_lang=target_lang,
         )
@@ -452,6 +467,7 @@ class OpusMTTranslator(BaseTranslator):
 
         return TranslationResult(
             text=result,
+            original_text=text,
             source_lang=source_lang,
             target_lang=target_lang,
         )
@@ -541,9 +557,72 @@ class RivaInstructTranslator(BaseTranslator):
 
         return TranslationResult(
             text=result.strip(),
+            original_text=text,
             source_lang=source_lang,
             target_lang=target_lang,
         )
+```
+
+## 既存コードとの統合
+
+### 既存イベント型との連携
+
+`livecap_core/transcription_types.py` に翻訳関連のイベント型が既に定義されている：
+
+| 型 | 用途 |
+|----|------|
+| `TranslationRequestEventDict` | 翻訳リクエストイベント |
+| `TranslationResultEventDict` | 翻訳結果イベント |
+| `create_translation_request_event()` | リクエストイベント生成 |
+| `create_translation_result_event()` | 結果イベント生成 |
+
+`TranslationResult.to_event_dict()` メソッドにより、翻訳結果を既存のパイプラインイベントに変換可能：
+
+```python
+# 翻訳実行
+result = translator.translate("こんにちは", "ja", "en")
+
+# 既存イベント型に変換してパイプラインに流す
+event = result.to_event_dict()
+# -> TranslationResultEventDict として処理可能
+```
+
+### LoadPhase.TRANSLATION_MODEL との関係
+
+`livecap_core/engines/model_loading_phases.py` に `LoadPhase.TRANSLATION_MODEL` (進捗 75-100%) が定義済み。
+
+#### 設計方針
+
+| 選択肢 | 説明 | 採用 |
+|--------|------|------|
+| 統合ロード | ASR モデルロード後に自動で翻訳もロード | ❌ |
+| **分離ロード** | 翻訳は別途 `TranslatorFactory` で管理 | ✅ |
+
+**理由**:
+- ASR と翻訳は独立したライフサイクル（片方だけ使うケースも多い）
+- GPU メモリ管理を明示的に制御可能
+- 既存の `LoadPhase.TRANSLATION_MODEL` は GUI 統合時のオプションとして活用
+
+#### GUI 統合時の利用例（将来）
+
+```python
+# StreamTranscriberWithTranslation などの統合クラスで使用する場合
+class StreamTranscriberWithTranslation:
+    def __init__(self, engine, translator=None):
+        self.engine = engine
+        self.translator = translator
+
+    def load_models(self, progress_callback=None):
+        # ASR ロード (0-75%)
+        self.engine.load_model(progress_callback=...)
+
+        # 翻訳ロード (75-100%) - LoadPhase.TRANSLATION_MODEL を使用
+        if self.translator:
+            if progress_callback:
+                progress_callback(75, LoadPhase.TRANSLATION_MODEL)
+            self.translator.load_model()
+            if progress_callback:
+                progress_callback(100, LoadPhase.COMPLETED)
 ```
 
 ## GPU メモリ管理
@@ -823,6 +902,7 @@ def test_streamtranscriber_with_translation():
 - [ ] OpusMTTranslator が動作する（モデルロード含む）
 - [ ] RivaInstructTranslator が動作する（GPU 環境）
 - [ ] 文脈挿入が全エンジンで機能する
+- [ ] `TranslationResult.to_event_dict()` が既存イベント型に変換できる
 - [ ] VRAM 確認ユーティリティが追加されている
 - [ ] VRAM 不足時の警告が実装されている
 - [ ] ユニットテストがパスする
