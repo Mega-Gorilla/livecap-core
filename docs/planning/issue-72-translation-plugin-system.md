@@ -1,0 +1,727 @@
+# Issue #72: 翻訳プラグインシステム実装
+
+## 概要
+
+翻訳プラグインシステムを設計し、Google Translate、OPUS-MT、Riva-Translate-4B-Instruct の3つの翻訳エンジンを実装する。
+
+## 背景と調査結果
+
+### 翻訳エンジン選定
+
+調査の結果、以下の3エンジンを実装対象として選定：
+
+| エンジン | 種別 | 文脈対応 | 要件 |
+|---------|------|---------|------|
+| **Google Translate** | クラウド API | パラグラフ連結 | インターネット |
+| **OPUS-MT** | ローカル NMT | パラグラフ連結 | CPU / GPU |
+| **Riva-Translate-4B-Instruct** | ローカル LLM | プロンプト (8K) | GPU (~8GB) |
+
+### 除外したエンジン
+
+- **Riva NMT**: Riva Server のセットアップが複雑（Triton + gRPC 必須）
+- **NLLB-200 / M2M-100**: OPUS-MT と役割が重複、言語ペアごとのモデル管理の方が柔軟
+- **Argos Translate**: OPUS-MT と同じ CTranslate2 基盤、直接 OPUS-MT を使用する方がシンプル
+
+### 文脈挿入方式
+
+全エンジンで文脈を活用可能：
+
+```python
+# 方式1: パラグラフ連結（Google, OPUS-MT）
+history = "昨日はVRChatで友達とドライブした。彼はとてもスピードを出した。"
+current = "そのせいで今日は少し疲れている。"
+full_input = history + "\n" + current
+translation = translator.translate(full_input)
+
+# 方式2: プロンプト（Riva-4B-Instruct）
+prompt = f"""<s>System You are an expert translator.
+Previous context: {history}</s>
+<s>User Translate: {current}</s>
+<s>Assistant"""
+```
+
+## アーキテクチャ設計
+
+### 設計方針: ASR エンジンとの関係
+
+#### 検討した選択肢
+
+| 選択肢 | 説明 | 評価 |
+|--------|------|------|
+| **A. 共通基底クラス** | `BaseModelEngine` → `BaseEngine` / `BaseTranslator` | ❌ 過度な結合 |
+| **B. 完全分離** | `BaseTranslator` を独立設計 | ✅ **採用** |
+| **C. コンポジション** | `ModelLoader` を共有 | △ 将来検討 |
+
+#### 採用理由（選択肢 B）
+
+1. **インターフェースの違い**:
+   - ASR: `transcribe(audio, sample_rate) -> (text, confidence)`
+   - 翻訳: `translate(text, source, target, context) -> str`
+
+2. **モデルロードパターンの違い**:
+   - ASR: 重い初期化、進捗報告が重要
+   - 翻訳: Google は初期化不要、OPUS-MT は軽量
+
+3. **共有する部分**:
+   - `detect_device()` - 既存ユーティリティを再利用
+   - `get_models_dir()` - モデルディレクトリ管理
+   - `TranslatorMetadata` - `EngineMetadata` と同様の設計
+
+### モジュール構成
+
+```
+livecap_core/
+├── translation/
+│   ├── __init__.py              # Public API exports
+│   ├── base.py                  # BaseTranslator ABC
+│   ├── factory.py               # TranslatorFactory
+│   ├── metadata.py              # TranslatorMetadata
+│   ├── result.py                # TranslationResult dataclass
+│   └── impl/
+│       ├── __init__.py
+│       ├── google.py            # GoogleTranslator
+│       ├── opus_mt.py           # OpusMTTranslator
+│       └── riva_instruct.py     # RivaInstructTranslator
+└── __init__.py                  # Add translation exports
+```
+
+### クラス設計
+
+#### BaseTranslator
+
+```python
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
+
+@dataclass
+class TranslationResult:
+    """翻訳結果"""
+    text: str                          # 翻訳テキスト
+    source_lang: str                   # ソース言語
+    target_lang: str                   # ターゲット言語
+    confidence: Optional[float] = None # 信頼度（LLMの場合）
+
+class BaseTranslator(ABC):
+    """翻訳エンジンの抽象基底クラス"""
+
+    def __init__(self, **kwargs):
+        self._initialized = False
+
+    @abstractmethod
+    def translate(
+        self,
+        text: str,
+        source_lang: str,
+        target_lang: str,
+        context: Optional[List[str]] = None,
+    ) -> TranslationResult:
+        """
+        テキストを翻訳
+
+        Args:
+            text: 翻訳対象テキスト
+            source_lang: ソース言語コード (BCP-47)
+            target_lang: ターゲット言語コード (BCP-47)
+            context: 過去の文脈（直近N文）
+
+        Returns:
+            TranslationResult
+        """
+        ...
+
+    @abstractmethod
+    async def translate_async(
+        self,
+        text: str,
+        source_lang: str,
+        target_lang: str,
+        context: Optional[List[str]] = None,
+    ) -> TranslationResult:
+        """非同期翻訳"""
+        ...
+
+    @abstractmethod
+    def get_supported_pairs(self) -> List[Tuple[str, str]]:
+        """サポートする言語ペアを取得"""
+        ...
+
+    @abstractmethod
+    def get_translator_name(self) -> str:
+        """翻訳エンジン名を取得"""
+        ...
+
+    def is_initialized(self) -> bool:
+        """初期化済みかどうか"""
+        return self._initialized
+
+    def load_model(self) -> None:
+        """モデルをロード（ローカルモデルの場合）"""
+        pass  # クラウド API はオーバーライド不要
+
+    def cleanup(self) -> None:
+        """リソースのクリーンアップ"""
+        pass
+```
+
+#### TranslatorMetadata
+
+```python
+from dataclasses import dataclass, field
+from typing import Dict, List, Any, Optional
+
+@dataclass
+class TranslatorInfo:
+    """翻訳エンジンのメタデータ"""
+    translator_id: str
+    display_name: str
+    description: str
+    module: str                              # e.g., ".impl.google"
+    class_name: str                          # e.g., "GoogleTranslator"
+    supported_pairs: List[Tuple[str, str]]   # [("ja", "en"), ("en", "ja"), ...]
+    requires_model_load: bool = False        # モデルロードが必要か
+    requires_gpu: bool = False               # GPU 必須か
+    default_params: Dict[str, Any] = field(default_factory=dict)
+
+class TranslatorMetadata:
+    """翻訳エンジンのメタデータ管理"""
+
+    _TRANSLATORS: Dict[str, TranslatorInfo] = {
+        "google": TranslatorInfo(
+            translator_id="google",
+            display_name="Google Translate",
+            description="Google Cloud Translation API (via deep-translator)",
+            module=".impl.google",
+            class_name="GoogleTranslator",
+            supported_pairs=[],  # 動的に取得
+            requires_model_load=False,
+            requires_gpu=False,
+        ),
+        "opus_mt": TranslatorInfo(
+            translator_id="opus_mt",
+            display_name="OPUS-MT",
+            description="Helsinki-NLP OPUS-MT models via CTranslate2",
+            module=".impl.opus_mt",
+            class_name="OpusMTTranslator",
+            supported_pairs=[("ja", "en"), ("en", "ja")],  # 初期サポート
+            requires_model_load=True,
+            requires_gpu=False,
+            default_params={"device": "cpu", "compute_type": "int8"},
+        ),
+        "riva_instruct": TranslatorInfo(
+            translator_id="riva_instruct",
+            display_name="Riva Translate 4B Instruct",
+            description="NVIDIA Riva-Translate-4B-Instruct LLM",
+            module=".impl.riva_instruct",
+            class_name="RivaInstructTranslator",
+            supported_pairs=[
+                ("ja", "en"), ("en", "ja"),
+                ("zh", "en"), ("en", "zh"),
+                ("ko", "en"), ("en", "ko"),
+                # ... 12言語対応
+            ],
+            requires_model_load=True,
+            requires_gpu=True,
+            default_params={"device": "cuda", "max_new_tokens": 256},
+        ),
+    }
+
+    @classmethod
+    def get(cls, translator_id: str) -> Optional[TranslatorInfo]:
+        return cls._TRANSLATORS.get(translator_id)
+
+    @classmethod
+    def get_all(cls) -> Dict[str, TranslatorInfo]:
+        return cls._TRANSLATORS.copy()
+
+    @classmethod
+    def get_translators_for_pair(cls, source: str, target: str) -> List[str]:
+        """指定された言語ペアをサポートする翻訳エンジンを取得"""
+        result = []
+        for tid, info in cls._TRANSLATORS.items():
+            # Google は全ペア対応
+            if tid == "google":
+                result.append(tid)
+            elif (source, target) in info.supported_pairs:
+                result.append(tid)
+        return result
+```
+
+#### TranslatorFactory
+
+```python
+class TranslatorFactory:
+    """翻訳エンジンを作成するファクトリークラス"""
+
+    @classmethod
+    def create_translator(
+        cls,
+        translator_type: str,
+        **translator_options,
+    ) -> BaseTranslator:
+        """
+        指定されたタイプの翻訳エンジンを作成
+
+        Args:
+            translator_type: 翻訳エンジンタイプ
+                利用可能: google, opus_mt, riva_instruct
+            **translator_options: エンジン固有のパラメータ
+
+        Returns:
+            BaseTranslator のインスタンス
+
+        Examples:
+            # Google Translate
+            translator = TranslatorFactory.create_translator("google")
+
+            # OPUS-MT (CPU)
+            translator = TranslatorFactory.create_translator(
+                "opus_mt",
+                model_name="Helsinki-NLP/opus-mt-ja-en",
+                device="cpu"
+            )
+
+            # Riva 4B Instruct (GPU)
+            translator = TranslatorFactory.create_translator(
+                "riva_instruct",
+                device="cuda"
+            )
+        """
+        metadata = TranslatorMetadata.get(translator_type)
+        if metadata is None:
+            available = list(TranslatorMetadata.get_all().keys())
+            raise ValueError(
+                f"Unknown translator type: {translator_type}. "
+                f"Available: {available}"
+            )
+
+        # default_params と options をマージ
+        params = {**metadata.default_params, **translator_options}
+
+        # 動的インポート
+        import importlib
+        module = importlib.import_module(
+            metadata.module,
+            package="livecap_core.translation"
+        )
+        translator_class = getattr(module, metadata.class_name)
+
+        return translator_class(**params)
+```
+
+### 各エンジンの実装
+
+#### 1. GoogleTranslator
+
+```python
+from deep_translator import GoogleTranslator as DeepGoogleTranslator
+
+class GoogleTranslator(BaseTranslator):
+    """Google Translate (via deep-translator)"""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._initialized = True  # 初期化不要
+
+    def translate(
+        self,
+        text: str,
+        source_lang: str,
+        target_lang: str,
+        context: Optional[List[str]] = None,
+    ) -> TranslationResult:
+        # 文脈をパラグラフとして連結
+        if context:
+            full_text = "\n".join(context[-2:]) + "\n" + text
+        else:
+            full_text = text
+
+        translator = DeepGoogleTranslator(
+            source=self._normalize_lang(source_lang),
+            target=self._normalize_lang(target_lang),
+        )
+        result = translator.translate(full_text)
+
+        # 文脈を含めた場合、最後の文を抽出
+        if context:
+            result = self._extract_last_sentence(result)
+
+        return TranslationResult(
+            text=result,
+            source_lang=source_lang,
+            target_lang=target_lang,
+        )
+
+    def _normalize_lang(self, lang: str) -> str:
+        """BCP-47 を Google 言語コードに変換"""
+        # ja-JP -> ja, en-US -> en
+        return lang.split("-")[0]
+
+    def _extract_last_sentence(self, text: str) -> str:
+        """最後の文を抽出"""
+        lines = text.strip().split("\n")
+        return lines[-1] if lines else text
+```
+
+#### 2. OpusMTTranslator
+
+```python
+import ctranslate2
+import transformers
+
+class OpusMTTranslator(BaseTranslator):
+    """OPUS-MT via CTranslate2"""
+
+    def __init__(
+        self,
+        model_name: str = "Helsinki-NLP/opus-mt-ja-en",
+        device: str = "cpu",
+        compute_type: str = "int8",
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.model_name = model_name
+        self.device = device
+        self.compute_type = compute_type
+        self.model = None
+        self.tokenizer = None
+
+    def load_model(self) -> None:
+        """モデルをロード"""
+        from livecap_core.utils import get_models_dir
+
+        # CTranslate2 形式に変換されたモデルをロード
+        model_dir = get_models_dir() / "opus-mt" / self.model_name.replace("/", "--")
+
+        if not model_dir.exists():
+            self._convert_model(model_dir)
+
+        self.model = ctranslate2.Translator(
+            str(model_dir),
+            device=self.device,
+            compute_type=self.compute_type,
+        )
+        self.tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_name)
+        self._initialized = True
+
+    def _convert_model(self, output_dir):
+        """HuggingFace モデルを CTranslate2 形式に変換"""
+        import subprocess
+        output_dir.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run([
+            "ct2-transformers-converter",
+            "--model", self.model_name,
+            "--output_dir", str(output_dir),
+            "--quantization", self.compute_type,
+        ], check=True)
+
+    def translate(
+        self,
+        text: str,
+        source_lang: str,
+        target_lang: str,
+        context: Optional[List[str]] = None,
+    ) -> TranslationResult:
+        if not self._initialized:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        # 文脈連結
+        if context:
+            full_text = " ".join(context[-2:]) + " " + text
+        else:
+            full_text = text
+
+        # トークナイズ
+        source_tokens = self.tokenizer.convert_ids_to_tokens(
+            self.tokenizer.encode(full_text)
+        )
+
+        # 翻訳
+        results = self.model.translate_batch([source_tokens])
+        target_tokens = results[0].hypotheses[0]
+
+        # デコード
+        result = self.tokenizer.decode(
+            self.tokenizer.convert_tokens_to_ids(target_tokens),
+            skip_special_tokens=True,
+        )
+
+        # 文脈を含めた場合、最後の部分を抽出（近似）
+        if context:
+            result = self._extract_relevant_part(result, len(context))
+
+        return TranslationResult(
+            text=result,
+            source_lang=source_lang,
+            target_lang=target_lang,
+        )
+```
+
+#### 3. RivaInstructTranslator
+
+```python
+class RivaInstructTranslator(BaseTranslator):
+    """Riva-Translate-4B-Instruct via transformers"""
+
+    LANG_NAMES = {
+        "ja": "Japanese", "en": "English", "zh": "Simplified Chinese",
+        "ko": "Korean", "de": "German", "fr": "French",
+        "es": "Spanish", "pt": "Brazilian Portuguese", "ru": "Russian",
+        "ar": "Arabic", "zh-TW": "Traditional Chinese",
+    }
+
+    def __init__(
+        self,
+        device: str = "cuda",
+        max_new_tokens: int = 256,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.device = device
+        self.max_new_tokens = max_new_tokens
+        self.model = None
+        self.tokenizer = None
+
+    def load_model(self) -> None:
+        """モデルをロード"""
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+
+        model_name = "nvidia/Riva-Translate-4B-Instruct"
+
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(model_name)
+
+        if self.device == "cuda":
+            self.model = self.model.cuda()
+
+        self._initialized = True
+
+    def translate(
+        self,
+        text: str,
+        source_lang: str,
+        target_lang: str,
+        context: Optional[List[str]] = None,
+    ) -> TranslationResult:
+        if not self._initialized:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        source_name = self.LANG_NAMES.get(source_lang, source_lang)
+        target_name = self.LANG_NAMES.get(target_lang, target_lang)
+
+        # プロンプト構築
+        system_content = f"You are an expert at translating text from {source_name} to {target_name}."
+
+        if context:
+            system_content += f"\n\nPrevious context for reference:\n" + "\n".join(context[-3:])
+
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": f"What is the {target_name} translation of the sentence: {text}?"},
+        ]
+
+        tokenized = self.tokenizer.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_tensors="pt",
+        ).to(self.model.device)
+
+        outputs = self.model.generate(
+            tokenized,
+            max_new_tokens=self.max_new_tokens,
+            pad_token_id=self.tokenizer.eos_token_id,
+        )
+
+        # 入力部分を除いてデコード
+        result = self.tokenizer.decode(
+            outputs[0][tokenized.shape[1]:],
+            skip_special_tokens=True,
+        )
+
+        return TranslationResult(
+            text=result.strip(),
+            source_lang=source_lang,
+            target_lang=target_lang,
+        )
+```
+
+## 依存関係
+
+### pyproject.toml 更新
+
+```toml
+[project.optional-dependencies]
+"translation" = [
+    "deep-translator>=1.11.4",   # Google Translate
+]
+"translation-local" = [
+    "ctranslate2>=4.0.0",        # OPUS-MT 推論エンジン
+    "transformers>=4.40.0",      # モデルロード・トークナイザ
+    "sentencepiece>=0.2.0",      # OPUS-MT トークナイザ
+]
+"translation-riva" = [
+    "transformers>=4.40.0",      # Riva-4B-Instruct
+    "torch>=2.0.0",              # GPU 推論
+    "tiktoken>=0.7.0",           # Riva トークナイザ
+]
+```
+
+### 既存依存との共有
+
+| 依存 | 共有元 | 用途 |
+|------|-------|------|
+| `ctranslate2` | `whispers2t` | OPUS-MT 推論 |
+| `transformers` | `engines-nemo` | Riva-4B ロード |
+| `torch` | `engines-torch` | GPU 推論 |
+
+## 実装フェーズ
+
+### Phase 1: 基盤実装
+
+1. `livecap_core/translation/` ディレクトリ作成
+2. `base.py` - BaseTranslator ABC
+3. `result.py` - TranslationResult dataclass
+4. `metadata.py` - TranslatorMetadata
+5. `factory.py` - TranslatorFactory
+
+### Phase 2: Google Translator
+
+1. `impl/google.py` - GoogleTranslator 実装
+2. ユニットテスト
+3. 文脈連結のテスト
+
+### Phase 3: OPUS-MT Translator
+
+1. `impl/opus_mt.py` - OpusMTTranslator 実装
+2. CTranslate2 モデル変換処理
+3. ユニットテスト（モック使用）
+4. 統合テスト（実モデル）
+
+### Phase 4: Riva Instruct Translator
+
+1. `impl/riva_instruct.py` - RivaInstructTranslator 実装
+2. プロンプトテンプレート最適化
+3. ユニットテスト（モック使用）
+4. GPU 統合テスト
+
+### Phase 5: 統合・ドキュメント
+
+1. `livecap_core/__init__.py` への export 追加
+2. StreamTranscriber との統合テスト
+3. ドキュメント作成
+4. サンプルスクリプト作成
+
+## テスト計画
+
+### ユニットテスト
+
+```python
+# tests/core/translation/test_google_translator.py
+def test_translate_basic():
+    translator = GoogleTranslator()
+    result = translator.translate("Hello", "en", "ja")
+    assert result.text  # 何らかの翻訳が返る
+    assert result.source_lang == "en"
+    assert result.target_lang == "ja"
+
+def test_translate_with_context():
+    translator = GoogleTranslator()
+    context = ["Yesterday was fun.", "We went to the park."]
+    result = translator.translate("It was sunny.", "en", "ja", context=context)
+    assert result.text
+
+# tests/core/translation/test_opus_mt_translator.py
+@pytest.mark.skipif(not OPUS_MT_AVAILABLE, reason="OPUS-MT not installed")
+def test_opus_mt_load_model():
+    translator = OpusMTTranslator(model_name="Helsinki-NLP/opus-mt-en-ja")
+    translator.load_model()
+    assert translator.is_initialized()
+
+# tests/core/translation/test_riva_instruct_translator.py
+@pytest.mark.gpu
+def test_riva_instruct_with_context():
+    translator = RivaInstructTranslator(device="cuda")
+    translator.load_model()
+    context = ["VRChatで友達とドライブした。", "彼はとてもスピードを出した。"]
+    result = translator.translate(
+        "そのせいで今日は少し疲れている。",
+        "ja", "en",
+        context=context
+    )
+    assert "tired" in result.text.lower() or "fatigue" in result.text.lower()
+```
+
+### 統合テスト
+
+```python
+# tests/integration/test_translation_pipeline.py
+def test_streamtranscriber_with_translation():
+    """文字起こし + 翻訳の統合テスト"""
+    engine = EngineFactory.create_engine("whispers2t_base")
+    engine.load_model()
+
+    translator = TranslatorFactory.create_translator("google")
+
+    with StreamTranscriber(engine=engine) as transcriber:
+        # ... 文字起こし
+        for result in transcriber.transcribe_sync(source):
+            translation = translator.translate(
+                result.text, "ja", "en",
+                context=previous_texts[-3:]
+            )
+            print(f"{result.text} -> {translation.text}")
+```
+
+## 変更ファイル一覧
+
+| ファイル | 操作 | 説明 |
+|---------|------|------|
+| `livecap_core/translation/__init__.py` | 新規 | Public API |
+| `livecap_core/translation/base.py` | 新規 | BaseTranslator |
+| `livecap_core/translation/result.py` | 新規 | TranslationResult |
+| `livecap_core/translation/metadata.py` | 新規 | TranslatorMetadata |
+| `livecap_core/translation/factory.py` | 新規 | TranslatorFactory |
+| `livecap_core/translation/impl/__init__.py` | 新規 | Impl package |
+| `livecap_core/translation/impl/google.py` | 新規 | GoogleTranslator |
+| `livecap_core/translation/impl/opus_mt.py` | 新規 | OpusMTTranslator |
+| `livecap_core/translation/impl/riva_instruct.py` | 新規 | RivaInstructTranslator |
+| `livecap_core/__init__.py` | 更新 | Translation exports |
+| `pyproject.toml` | 更新 | 依存関係追加 |
+| `tests/core/translation/` | 新規 | ユニットテスト |
+| `tests/integration/test_translation_pipeline.py` | 新規 | 統合テスト |
+
+## リスクと対策
+
+| リスク | 影響 | 対策 |
+|--------|------|------|
+| Google Translate レート制限 | 高頻度使用で失敗 | リトライ + バックオフ |
+| OPUS-MT モデル変換失敗 | 初回起動が遅い | 事前変換済みモデル提供 |
+| Riva-4B VRAM 不足 | GPU 8GB 必要 | 明確なエラーメッセージ |
+| 文脈抽出の精度 | 翻訳結果から対象文を特定困難 | 区切り文字の工夫 |
+
+## 完了条件
+
+- [ ] BaseTranslator ABC が定義されている
+- [ ] TranslatorFactory が動作する
+- [ ] GoogleTranslator が動作する
+- [ ] OpusMTTranslator が動作する（モデルロード含む）
+- [ ] RivaInstructTranslator が動作する（GPU 環境）
+- [ ] 文脈挿入が全エンジンで機能する
+- [ ] ユニットテストがパスする
+- [ ] 統合テストがパスする
+- [ ] `livecap_core` から export されている
+
+## 参考資料
+
+- [deep-translator PyPI](https://pypi.org/project/deep-translator/)
+- [CTranslate2 OPUS-MT Guide](https://opennmt.net/CTranslate2/guides/opus_mt.html)
+- [Helsinki-NLP/opus-mt-ja-en](https://huggingface.co/Helsinki-NLP/opus-mt-ja-en)
+- [nvidia/Riva-Translate-4B-Instruct](https://huggingface.co/nvidia/Riva-Translate-4B-Instruct)
+- [Google Cloud Translation](https://cloud.google.com/blog/products/ai-machine-learning/google-cloud-translation-ai)
+
+---
+
+**作成日**: 2025-12-11
+**Issue**: #72
+**Phase**: 4 (翻訳機能)
