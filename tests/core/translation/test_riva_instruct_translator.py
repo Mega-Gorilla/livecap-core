@@ -296,26 +296,77 @@ class TestRivaInstructTranslatorVRAMCheck:
 
     @patch("livecap_core.translation.impl.riva_instruct.transformers")
     @patch("livecap_core.utils.get_available_vram")
-    def test_vram_warning_when_insufficient(self, mock_vram, mock_transformers):
+    def test_vram_warning_when_insufficient(self, mock_vram, mock_transformers, caplog):
         """VRAM 不足時に警告"""
+        import logging
+
         mock_vram.return_value = 4000  # 4GB (insufficient)
 
+        # transformers のモック設定
+        mock_tokenizer = MagicMock()
+        mock_model = MagicMock()
+        mock_transformers.AutoTokenizer.from_pretrained.return_value = mock_tokenizer
+        mock_transformers.AutoModelForCausalLM.from_pretrained.return_value = mock_model
+
         translator = RivaInstructTranslator(device="cuda")
 
-        # load_model() で警告が出ることを確認
-        with patch.object(
-            RivaInstructTranslator, "load_model", wraps=translator.load_model
-        ):
-            # 実際にモデルロードせず、VRAM チェックのみをテスト
-            pass
+        # load_model() を呼んで警告が出ることを確認
+        with caplog.at_level(logging.WARNING):
+            translator.load_model()
 
+        # 警告メッセージを確認
+        assert any("Riva-4B requires" in record.message for record in caplog.records)
+        assert any("4000MB" in record.message for record in caplog.records)
+
+    @patch("livecap_core.translation.impl.riva_instruct.transformers")
     @patch("livecap_core.utils.get_available_vram")
-    def test_vram_check_skipped_when_none(self, mock_vram):
+    def test_vram_check_skipped_when_none(self, mock_vram, mock_transformers, caplog):
         """VRAM が None の場合はチェックスキップ"""
+        import logging
+
         mock_vram.return_value = None
 
+        # transformers のモック設定
+        mock_tokenizer = MagicMock()
+        mock_model = MagicMock()
+        mock_transformers.AutoTokenizer.from_pretrained.return_value = mock_tokenizer
+        mock_transformers.AutoModelForCausalLM.from_pretrained.return_value = mock_model
+
         translator = RivaInstructTranslator(device="cuda")
-        # エラーなく進む（実際のモデルロードはしない）
+
+        # load_model() を呼んで警告が出ないことを確認
+        with caplog.at_level(logging.DEBUG):
+            translator.load_model()
+
+        # VRAM 不足警告は出ない（スキップのデバッグログは出る）
+        assert not any(
+            "Riva-4B requires" in record.message for record in caplog.records
+        )
+
+    @patch("livecap_core.translation.impl.riva_instruct.transformers")
+    @patch("livecap_core.utils.get_available_vram")
+    def test_no_vram_warning_when_sufficient(self, mock_vram, mock_transformers, caplog):
+        """VRAM 十分な場合は警告なし"""
+        import logging
+
+        mock_vram.return_value = 10000  # 10GB (sufficient)
+
+        # transformers のモック設定
+        mock_tokenizer = MagicMock()
+        mock_model = MagicMock()
+        mock_transformers.AutoTokenizer.from_pretrained.return_value = mock_tokenizer
+        mock_transformers.AutoModelForCausalLM.from_pretrained.return_value = mock_model
+
+        translator = RivaInstructTranslator(device="cuda")
+
+        # load_model() を呼んで警告が出ないことを確認
+        with caplog.at_level(logging.WARNING):
+            translator.load_model()
+
+        # VRAM 不足警告は出ない
+        assert not any(
+            "Riva-4B requires" in record.message for record in caplog.records
+        )
 
 
 @pytest.mark.gpu

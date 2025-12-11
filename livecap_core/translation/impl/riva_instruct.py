@@ -108,14 +108,19 @@ class RivaInstructTranslator(BaseTranslator):
             self._tokenizer = transformers.AutoTokenizer.from_pretrained(
                 self.MODEL_NAME
             )
-            self._model = transformers.AutoModelForCausalLM.from_pretrained(
-                self.MODEL_NAME,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-                device_map=self.device if self.device == "cuda" else None,
-            )
 
-            # CPU の場合は明示的にデバイスに移動
-            if self.device == "cpu":
+            # GPU: device_map="auto" で自動配置、CPU: None でロード後に移動
+            if self.device == "cuda":
+                self._model = transformers.AutoModelForCausalLM.from_pretrained(
+                    self.MODEL_NAME,
+                    torch_dtype=torch.float16,
+                    device_map="auto",
+                )
+            else:
+                self._model = transformers.AutoModelForCausalLM.from_pretrained(
+                    self.MODEL_NAME,
+                    torch_dtype=torch.float32,
+                )
                 self._model = self._model.to("cpu")
 
             self._initialized = True
