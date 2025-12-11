@@ -4,6 +4,42 @@
 
 翻訳プラグインシステムを設計し、Google Translate、OPUS-MT、Riva-Translate-4B-Instruct の3つの翻訳エンジンを実装する。
 
+## 実装ステータス
+
+> **Note**: 本ドキュメントは **実装計画** です。以下のコンポーネントは計画段階であり、実装はこれから行われます。
+
+### 新規作成（未実装）
+
+| コンポーネント | ステータス | Phase | 備考 |
+|---------------|-----------|-------|------|
+| `livecap_core/translation/` | ❌ 未実装 | 1 | ディレクトリ作成 |
+| `translation/base.py` | ❌ 未実装 | 1 | BaseTranslator ABC |
+| `translation/result.py` | ❌ 未実装 | 1 | TranslationResult dataclass |
+| `translation/metadata.py` | ❌ 未実装 | 1 | TranslatorMetadata |
+| `translation/factory.py` | ❌ 未実装 | 1 | TranslatorFactory |
+| `translation/exceptions.py` | ❌ 未実装 | 1 | 例外クラス階層 |
+| `translation/retry.py` | ❌ 未実装 | 1 | リトライデコレータ |
+| `translation/lang_codes.py` | ❌ 未実装 | 1 | 言語コードユーティリティ |
+| `translation/impl/google.py` | ❌ 未実装 | 2 | GoogleTranslator |
+| `translation/impl/opus_mt.py` | ❌ 未実装 | 3 | OpusMTTranslator |
+| `translation/impl/riva_instruct.py` | ❌ 未実装 | 4 | RivaInstructTranslator |
+| `utils/__init__.py` VRAM 追加 | ❌ 未実装 | 1 | get_available_vram 等 |
+| `pyproject.toml` 依存追加 | ❌ 未実装 | 1 | translation-local, translation-riva |
+| `livecap_core/__init__.py` エクスポート | ❌ 未実装 | 5 | TranslatorFactory 等 |
+| `tests/core/translation/` | ❌ 未実装 | 2-4 | ユニットテスト |
+| `tests/integration/test_translation.py` | ❌ 未実装 | 5 | 統合テスト |
+| `tests/conftest.py` マーカー追加 | ❌ 未実装 | 2 | network, slow, gpu |
+
+### 既存コード（参照のみ）
+
+| コンポーネント | ステータス | ファイル |
+|---------------|-----------|----------|
+| `TranslationRequestEventDict` | ✅ 既存 | `transcription_types.py` |
+| `TranslationResultEventDict` | ✅ 既存 | `transcription_types.py` |
+| `create_translation_result_event()` | ✅ 既存 | `transcription_types.py` |
+| `LoadPhase.TRANSLATION_MODEL` | ✅ 既存 | `model_loading_phases.py` |
+| `EngineMetadata.to_iso639_1()` | ✅ 既存 | `engines/metadata.py` |
+
 ## 背景と調査結果
 
 ### 翻訳エンジン選定
