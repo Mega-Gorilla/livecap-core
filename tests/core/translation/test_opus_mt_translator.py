@@ -183,29 +183,50 @@ class TestOpusMTTranslatorMocked:
 class TestOpusMTTranslatorExtractRelevantPart:
     """_extract_relevant_part のテスト"""
 
-    def test_single_line(self):
-        """単一行"""
+    def test_single_line_no_context(self):
+        """単一行（文脈なし）"""
         translator = OpusMTTranslator()
-        result = translator._extract_relevant_part("Hello world")
+        result = translator._extract_relevant_part("Hello world", num_context_sentences=0)
         assert result == "Hello world"
 
-    def test_multiple_lines(self):
-        """複数行"""
+    def test_multiple_lines_with_newlines(self):
+        """複数行（改行保持）"""
         translator = OpusMTTranslator()
-        result = translator._extract_relevant_part("Line 1\nLine 2\nLine 3")
+        result = translator._extract_relevant_part("Line 1\nLine 2\nLine 3", num_context_sentences=2)
         assert result == "Line 3"
 
     def test_with_trailing_whitespace(self):
         """末尾空白"""
         translator = OpusMTTranslator()
-        result = translator._extract_relevant_part("Line 1\nLine 2\n  ")
+        result = translator._extract_relevant_part("Line 1\nLine 2\n  ", num_context_sentences=1)
         assert result == "Line 2"
 
     def test_empty_string(self):
         """空文字列"""
         translator = OpusMTTranslator()
-        result = translator._extract_relevant_part("")
+        result = translator._extract_relevant_part("", num_context_sentences=0)
         assert result == ""
+
+    def test_sentence_based_extraction(self):
+        """文ベース抽出（改行なし）"""
+        translator = OpusMTTranslator()
+        # OPUS-MT が改行を保持しない場合のテスト
+        text = "Mr. Tanaka goes to the gym. He is training for a marathon. He will run next month."
+        result = translator._extract_relevant_part(text, num_context_sentences=2)
+        assert result == "He will run next month."
+
+    def test_sentence_extraction_with_exclamation(self):
+        """感嘆符での文分割"""
+        translator = OpusMTTranslator()
+        text = "Hello! How are you? I am fine."
+        result = translator._extract_relevant_part(text, num_context_sentences=2)
+        assert result == "I am fine."
+
+    def test_single_sentence_no_extraction(self):
+        """単一文（抽出不要）"""
+        translator = OpusMTTranslator()
+        result = translator._extract_relevant_part("Hello world.", num_context_sentences=0)
+        assert result == "Hello world."
 
 
 class TestOpusMTTranslatorCleanup:

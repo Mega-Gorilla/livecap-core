@@ -176,8 +176,10 @@ class OpusMTTranslator(BaseTranslator):
             )
 
         # 文脈連結（改行区切りで段落として認識させる）
+        num_context_sentences = 0
         if context:
             ctx = context[-self._default_context_sentences :]
+            num_context_sentences = len(ctx)
             full_text = "\n".join(ctx) + "\n" + text
         else:
             full_text = text
@@ -200,9 +202,9 @@ class OpusMTTranslator(BaseTranslator):
         except Exception as e:
             raise TranslationModelError(f"Translation failed: {e}") from e
 
-        # 文脈を含めた場合、最後の段落を抽出
+        # 文脈を含めた場合、最後の文を抽出
         if context:
-            result = self._extract_relevant_part(result)
+            result = self._extract_relevant_part(result, num_context_sentences)
 
         return TranslationResult(
             text=result,
@@ -211,20 +213,38 @@ class OpusMTTranslator(BaseTranslator):
             target_lang=target_lang,
         )
 
-    def _extract_relevant_part(self, translated: str) -> str:
+    def _extract_relevant_part(self, translated: str, num_context_sentences: int) -> str:
         """
-        翻訳結果から対象部分（最後の段落）を抽出
+        翻訳結果から対象部分（最後の文）を抽出
 
-        文脈を連結して翻訳した場合、最後の段落のみを抽出する。
+        OPUS-MT は改行を保持しないため、文末記号で分割して最後の文を抽出する。
 
         Args:
             translated: 翻訳結果テキスト
+            num_context_sentences: 文脈として連結した文の数
 
         Returns:
-            最後の段落
+            最後の文（対象テキストの翻訳結果）
         """
+        import re
+
+        # まず改行で分割を試みる（改行が保持されている場合）
         lines = translated.strip().split("\n")
-        return lines[-1] if lines else translated
+        if len(lines) > 1:
+            return lines[-1]
+
+        # 改行がない場合、文末記号で分割
+        # 英語の文末: . ! ? と、それに続く空白または文末
+        sentences = re.split(r"(?<=[.!?])\s+", translated.strip())
+
+        if len(sentences) <= 1:
+            return translated
+
+        # 文脈文の数を超える文がある場合、最後の文を返す
+        if len(sentences) > num_context_sentences:
+            return sentences[-1]
+
+        return translated
 
     def get_translator_name(self) -> str:
         """翻訳エンジン名を取得"""
