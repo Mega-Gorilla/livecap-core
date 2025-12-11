@@ -72,10 +72,37 @@ class TranslatorFactory:
             params["default_context_sentences"] = metadata.default_context_sentences
 
         # 動的インポート
-        module = importlib.import_module(metadata.module, package="livecap_core.translation")
-        translator_class = getattr(module, metadata.class_name)
+        try:
+            module = importlib.import_module(metadata.module, package="livecap_core.translation")
+            translator_class = getattr(module, metadata.class_name)
+        except ModuleNotFoundError as e:
+            raise NotImplementedError(
+                f"Translator '{translator_type}' is registered but not yet implemented. "
+                f"This translator will be available in a future release. "
+                f"Currently available: {cls._get_implemented_translators()}"
+            ) from e
 
         return translator_class(**params)
+
+    @classmethod
+    def _get_implemented_translators(cls) -> list[str]:
+        """
+        実装済みの翻訳エンジンIDのリストを取得
+
+        Returns:
+            実装済み翻訳エンジンIDのリスト
+        """
+        implemented = []
+        for translator_id in TranslatorMetadata.list_translator_ids():
+            metadata = TranslatorMetadata.get(translator_id)
+            if metadata is None:
+                continue
+            try:
+                importlib.import_module(metadata.module, package="livecap_core.translation")
+                implemented.append(translator_id)
+            except ModuleNotFoundError:
+                pass
+        return implemented
 
     @classmethod
     def list_available_translators(cls) -> list[str]:

@@ -71,12 +71,19 @@ class TestTranslatorFactoryFuture:
 
     def test_opus_mt_not_implemented_yet(self):
         """OPUS-MT は Phase 3 で実装予定"""
-        # 現在は ModuleNotFoundError が発生する
-        with pytest.raises(ModuleNotFoundError):
+        # 明確なエラーメッセージで NotImplementedError が発生する
+        with pytest.raises(NotImplementedError, match="not yet implemented"):
             TranslatorFactory.create_translator("opus_mt")
 
     def test_riva_instruct_not_implemented_yet(self):
         """Riva Instruct は Phase 4 で実装予定"""
-        # 現在は ModuleNotFoundError が発生する
-        with pytest.raises(ModuleNotFoundError):
+        # 明確なエラーメッセージで NotImplementedError が発生する
+        with pytest.raises(NotImplementedError, match="not yet implemented"):
             TranslatorFactory.create_translator("riva_instruct")
+
+    def test_not_implemented_error_message_shows_available(self):
+        """未実装エンジンのエラーメッセージに利用可能なエンジンが表示される"""
+        with pytest.raises(NotImplementedError) as exc_info:
+            TranslatorFactory.create_translator("opus_mt")
+        assert "google" in str(exc_info.value)
+        assert "Currently available" in str(exc_info.value)
