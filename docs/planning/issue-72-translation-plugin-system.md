@@ -1289,15 +1289,10 @@ StreamTranscriber にリアルタイム翻訳機能を統合し、ASR + 翻訳�
        target_language: Optional[str] = None
    ```
 
-   **移行方針（後方互換性）**:
-   - 新フィールドは **末尾にデフォルト値付きで追加** → 既存コードへの影響なし
-   - 現行コードベースの `TranscriptionResult` 生成箇所を確認:
-     - `livecap_core/transcription/stream.py` (2箇所): **キーワード引数使用** ✅
-     - `tests/transcription/test_result.py` (9箇所): **キーワード引数使用** ✅
-     - `tests/integration/` (1箇所): **キーワード引数使用** ✅
-   - **位置引数での生成箇所なし** → 安全に追加可能
-   - 型チェック: `Optional[str] = None` により mypy 互換
-   - テスト追加: 新フィールドの有無両方をカバーするテストを追加
+   **移行方針**:
+   - `TranscriptionResult` は新しい API（Phase 1 で実装）のため、**破壊的変更を容認**
+   - 新フィールドは末尾にオプショナルとして追加（デフォルト値 `None`）
+   - 既存テストは必要に応じて更新
 
 2. **StreamTranscriber の拡張**
    ```python
@@ -1924,7 +1919,7 @@ def test_translation_result_to_event_dict():
 
 ### Phase 5（❌ 未完了）
 
-- [ ] `TranscriptionResult` に翻訳フィールドが追加されている（末尾にオプショナル追加）
+- [ ] `TranscriptionResult` に翻訳フィールドが追加されている
 - [ ] `StreamTranscriber` に translator パラメータが追加されている
 - [ ] 文脈バッファ管理が実装されている
 - [ ] ASR + 翻訳の統合テストがパスする
