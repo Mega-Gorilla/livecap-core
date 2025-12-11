@@ -6,29 +6,35 @@
 
 ## 実装ステータス
 
-> **Note**: 本ドキュメントは **実装計画** です。以下のコンポーネントは計画段階であり、実装はこれから行われます。
-
-### 新規作成（未実装）
+### Phase 1-4 完了（2025-12-11）
 
 | コンポーネント | ステータス | Phase | 備考 |
 |---------------|-----------|-------|------|
-| `livecap_core/translation/` | ❌ 未実装 | 1 | ディレクトリ作成 |
-| `translation/base.py` | ❌ 未実装 | 1 | BaseTranslator ABC |
-| `translation/result.py` | ❌ 未実装 | 1 | TranslationResult dataclass |
-| `translation/metadata.py` | ❌ 未実装 | 1 | TranslatorMetadata |
-| `translation/factory.py` | ❌ 未実装 | 1 | TranslatorFactory |
-| `translation/exceptions.py` | ❌ 未実装 | 1 | 例外クラス階層 |
-| `translation/retry.py` | ❌ 未実装 | 1 | リトライデコレータ |
-| `translation/lang_codes.py` | ❌ 未実装 | 1 | 言語コードユーティリティ |
-| `translation/impl/google.py` | ❌ 未実装 | 2 | GoogleTranslator |
-| `translation/impl/opus_mt.py` | ❌ 未実装 | 3 | OpusMTTranslator |
-| `translation/impl/riva_instruct.py` | ❌ 未実装 | 4 | RivaInstructTranslator |
-| `utils/__init__.py` VRAM 追加 | ❌ 未実装 | 1 | get_available_vram 等 |
-| `pyproject.toml` 依存追加 | ❌ 未実装 | 1 | translation-local, translation-riva |
-| `livecap_core/__init__.py` エクスポート | ❌ 未実装 | 5 | TranslatorFactory 等 |
-| `tests/core/translation/` | ❌ 未実装 | 2-4 | ユニットテスト |
-| `tests/integration/test_translation.py` | ❌ 未実装 | 5 | 統合テスト |
-| `tests/conftest.py` マーカー追加 | ❌ 未実装 | 2 | network, slow, gpu |
+| `livecap_core/translation/` | ✅ 完了 | 1 | ディレクトリ作成 |
+| `translation/base.py` | ✅ 完了 | 1 | BaseTranslator ABC |
+| `translation/result.py` | ✅ 完了 | 1 | TranslationResult dataclass |
+| `translation/metadata.py` | ✅ 完了 | 1 | TranslatorMetadata |
+| `translation/factory.py` | ✅ 完了 | 1 | TranslatorFactory |
+| `translation/exceptions.py` | ✅ 完了 | 1 | 例外クラス階層 |
+| `translation/retry.py` | ✅ 完了 | 1 | リトライデコレータ |
+| `translation/lang_codes.py` | ✅ 完了 | 1 | 言語コードユーティリティ |
+| `translation/impl/google.py` | ✅ 完了 | 2 | GoogleTranslator |
+| `translation/impl/opus_mt.py` | ✅ 完了 | 3 | OpusMTTranslator |
+| `translation/impl/riva_instruct.py` | ✅ 完了 | 4 | RivaInstructTranslator |
+| `utils/__init__.py` VRAM 追加 | ✅ 完了 | 1 | get_available_vram 等 |
+| `pyproject.toml` 依存追加 | ✅ 完了 | 1 | translation-local, translation-riva |
+| `livecap_core/__init__.py` エクスポート | ✅ 完了 | 2 | TranslatorFactory 等 |
+| `tests/core/translation/` | ✅ 完了 | 2-4 | ユニットテスト (120+) |
+| `tests/conftest.py` マーカー追加 | ✅ 完了 | 2 | network, slow, gpu |
+| `examples/translation/` | ✅ 完了 | 4 | サンプルスクリプト (5件) |
+
+### Phase 5 未実装
+
+| コンポーネント | ステータス | Phase | 備考 |
+|---------------|-----------|-------|------|
+| `StreamTranscriber` 翻訳統合 | ❌ 未実装 | 5 | リアルタイム翻訳対応 |
+| `TranscriptionResult` 翻訳フィールド | ❌ 未実装 | 5 | 翻訳結果の統合 |
+| `tests/integration/test_translation.py` | ❌ 未実装 | 5 | ASR+翻訳統合テスト |
 
 ### 既存コード（参照のみ）
 
@@ -1250,14 +1256,148 @@ def can_fit_on_gpu(required_mb: int, safety_margin: float = 0.9) -> bool:
 3. ユニットテスト（モック使用）
 4. GPU 統合テスト
 
-### Phase 5: 統合・ドキュメント
+### Phase 5: StreamTranscriber 翻訳統合
 
-1. `livecap_core/__init__.py` への export 追加
-2. 翻訳単体の統合テスト
-3. ドキュメント作成
-4. サンプルスクリプト作成（翻訳単体 + ASR 連携例）
+StreamTranscriber にリアルタイム翻訳機能を統合し、ASR + 翻訳のシームレスなパイプラインを提供する。
 
-**Note**: StreamTranscriber との密結合（`TranslatingTranscriber` 等）は本 Issue のスコープ外。
+#### 設計方針
+
+| 選択肢 | 説明 | 採用 |
+|--------|------|------|
+| **A. TranslatingTranscriber** | StreamTranscriber を継承した新クラス | ❌ 継承より合成 |
+| **B. translator パラメータ追加** | StreamTranscriber に translator オプションを追加 | ✅ **採用** |
+| **C. 外部パイプライン** | 呼び出し側で手動連携 | △ 現状（Phase 4まで） |
+
+#### 主要変更
+
+1. **TranscriptionResult の拡張**
+   ```python
+   @dataclass(frozen=True, slots=True)
+   class TranscriptionResult:
+       text: str
+       start_time: float
+       end_time: float
+       is_final: bool = True
+       confidence: float = 1.0
+       language: str = ""
+       source_id: str = "default"
+       # Phase 5 追加
+       translated_text: Optional[str] = None
+       target_language: Optional[str] = None
+   ```
+
+2. **StreamTranscriber の拡張**
+   ```python
+   class StreamTranscriber:
+       def __init__(
+           self,
+           engine: TranscriptionEngine,
+           translator: Optional[BaseTranslator] = None,  # 追加
+           source_lang: str = "ja",                      # 追加
+           target_lang: str = "en",                      # 追加
+           context_sentences: int = 2,                   # 追加
+           vad_config: Optional[VADConfig] = None,
+           ...
+       ):
+           self._translator = translator
+           self._source_lang = source_lang
+           self._target_lang = target_lang
+           self._context_sentences = context_sentences
+           self._context_buffer: List[str] = []
+   ```
+
+3. **翻訳パイプラインの追加**
+   ```python
+   def _process_segment(self, segment: VADSegment) -> TranscriptionResult:
+       # ASR
+       text, confidence = self._engine.transcribe(...)
+
+       # 翻訳（translator が設定されている場合）
+       translated_text = None
+       if self._translator and text.strip():
+           trans_result = self._translator.translate(
+               text,
+               self._source_lang,
+               self._target_lang,
+               context=self._context_buffer[-self._context_sentences:],
+           )
+           translated_text = trans_result.text
+           self._context_buffer.append(text)
+
+       return TranscriptionResult(
+           text=text,
+           translated_text=translated_text,
+           target_language=self._target_lang if translated_text else None,
+           ...
+       )
+   ```
+
+#### 使用例
+
+```python
+from livecap_core import (
+    StreamTranscriber,
+    EngineFactory,
+    TranslatorFactory,
+    MicrophoneSource,
+)
+
+# ASR + Translator を初期化
+engine = EngineFactory.create_engine("whispers2t_base", device="cuda")
+engine.load_model()
+
+translator = TranslatorFactory.create_translator("google")
+
+# StreamTranscriber に translator を渡す
+with StreamTranscriber(
+    engine=engine,
+    translator=translator,
+    source_lang="ja",
+    target_lang="en",
+) as transcriber:
+    with MicrophoneSource() as mic:
+        for result in transcriber.transcribe_sync(mic):
+            print(f"[JA] {result.text}")
+            if result.translated_text:
+                print(f"[EN] {result.translated_text}")
+```
+
+#### 非同期翻訳オプション
+
+翻訳がボトルネックになる場合、非同期翻訳オプションを提供:
+
+```python
+class StreamTranscriber:
+    def __init__(
+        self,
+        ...
+        async_translation: bool = False,  # 非同期翻訳モード
+    ):
+        self._async_translation = async_translation
+```
+
+- `async_translation=False` (デフォルト): 同期翻訳、結果に `translated_text` が含まれる
+- `async_translation=True`: 翻訳を別スレッドで実行、翻訳完了時にコールバック
+
+#### 実装タスク
+
+1. `TranscriptionResult` に翻訳フィールド追加
+2. `StreamTranscriber.__init__` に translator 関連パラメータ追加
+3. 文脈バッファ管理の実装
+4. `_process_segment` での翻訳処理追加
+5. 非同期翻訳モードの実装（オプション）
+6. ASR + 翻訳の統合テスト作成
+7. ドキュメント更新
+
+#### 変更ファイル
+
+| ファイル | 操作 | 説明 |
+|---------|------|------|
+| `livecap_core/transcription/result.py` | 更新 | 翻訳フィールド追加 |
+| `livecap_core/transcription/stream.py` | 更新 | translator 統合 |
+| `tests/core/transcription/test_stream.py` | 更新 | 翻訳統合テスト |
+| `tests/integration/test_translation.py` | 新規 | ASR+翻訳統合テスト |
+| `examples/realtime/realtime_translation.py` | 新規 | リアルタイム翻訳例 |
 
 ## 使用例
 
@@ -1754,18 +1894,28 @@ def test_translation_result_to_event_dict():
 
 ## 完了条件
 
-- [ ] BaseTranslator ABC が定義されている
-- [ ] TranslatorFactory が動作する
-- [ ] GoogleTranslator が動作する
-- [ ] OpusMTTranslator が動作する（モデルロード含む）
-- [ ] RivaInstructTranslator が動作する（GPU 環境）
-- [ ] 文脈挿入が全エンジンで機能する
-- [ ] `TranslationResult.to_event_dict()` が既存イベント型に変換できる
-- [ ] VRAM 確認ユーティリティが追加されている
-- [ ] VRAM 不足時の警告が実装されている
-- [ ] ユニットテストがパスする
-- [ ] 統合テストがパスする
-- [ ] `livecap_core` から export されている
+### Phase 1-4（✅ 完了）
+
+- [x] BaseTranslator ABC が定義されている
+- [x] TranslatorFactory が動作する
+- [x] GoogleTranslator が動作する
+- [x] OpusMTTranslator が動作する（モデルロード含む）
+- [x] RivaInstructTranslator が動作する（GPU 環境）
+- [x] 文脈挿入が全エンジンで機能する
+- [x] `TranslationResult.to_event_dict()` が既存イベント型に変換できる
+- [x] VRAM 確認ユーティリティが追加されている
+- [x] VRAM 不足時の警告が実装されている
+- [x] ユニットテストがパスする（120+ テスト）
+- [x] `livecap_core` から export されている
+- [x] サンプルスクリプトが作成されている
+
+### Phase 5（❌ 未完了）
+
+- [ ] `TranscriptionResult` に翻訳フィールドが追加されている
+- [ ] `StreamTranscriber` に translator パラメータが追加されている
+- [ ] 文脈バッファ管理が実装されている
+- [ ] ASR + 翻訳の統合テストがパスする
+- [ ] リアルタイム翻訳のサンプルスクリプトが作成されている
 
 ## 参考資料
 
@@ -1778,5 +1928,6 @@ def test_translation_result_to_event_dict():
 ---
 
 **作成日**: 2025-12-11
+**最終更新**: 2025-12-11
 **Issue**: #72
-**Phase**: 4 (翻訳機能)
+**Phase**: 5 (StreamTranscriber 翻訳統合)
