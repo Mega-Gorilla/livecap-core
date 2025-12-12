@@ -28,16 +28,27 @@
 | `tests/conftest.py` マーカー追加 | ✅ 完了 | 2 | network, slow, gpu |
 | `examples/translation/` | ✅ 完了 | 4 | サンプルスクリプト (5件) |
 
-**※1**: 翻訳 API は `livecap_core.translation` パッケージからインポート。トップレベル `livecap_core` へのエクスポートは Phase 5 で検討。
+**※1**: 翻訳 API は `livecap_core.translation` パッケージからインポート。トップレベル `livecap_core` へのエクスポートは Phase 6 で検討。
 
 ### Phase 5 未実装
 
 | コンポーネント | ステータス | Phase | 備考 |
 |---------------|-----------|-------|------|
-| `StreamTranscriber` 翻訳統合 | ❌ 未実装 | 5 | リアルタイム翻訳対応 |
-| `TranscriptionResult` 翻訳フィールド | ❌ 未実装 | 5 | 翻訳結果の統合 |
-| `tests/integration/test_translation.py` | ❌ 未実装 | 5 | ASR+翻訳統合テスト |
-| `livecap_core/__init__.py` 翻訳エクスポート | ❌ 検討中 | 5 | トップレベルへのエクスポート（オプション） |
+| `TranscriptionResult` 翻訳フィールド | ❌ 未実装 | 5 | `translated_text`, `target_language` |
+| `StreamTranscriber` translator 統合 | ❌ 未実装 | 5 | パラメータ追加、バリデーション |
+| 文脈バッファ管理 | ❌ 未実装 | 5 | translator の context_sentences 使用 |
+| 翻訳エラーハンドリング | ❌ 未実装 | 5 | 警告ログ、結果は返す |
+| `tests/core/transcription/test_stream.py` 更新 | ❌ 未実装 | 5 | 翻訳統合ユニットテスト |
+| `tests/integration/test_stream_translation.py` | ❌ 未実装 | 5 | ASR+翻訳統合テスト |
+| `examples/realtime/realtime_translation.py` | ❌ 未実装 | 5 | リアルタイム翻訳サンプル |
+
+### Phase 6 未実装（将来）
+
+| コンポーネント | ステータス | Phase | 備考 |
+|---------------|-----------|-------|------|
+| `FileTranscriptionPipeline` 翻訳統合 | ❌ 未実装 | 6 | ファイル文字起こし+翻訳 |
+| 非同期翻訳オプション | ❌ 検討中 | 6 | `async_translation` パラメータ |
+| トップレベルエクスポート | ❌ 検討中 | 6 | `livecap_core` から直接インポート |
 
 ### 既存コード（参照のみ）
 
@@ -1263,13 +1274,17 @@ def can_fit_on_gpu(required_mb: int, safety_margin: float = 0.9) -> bool:
 
 StreamTranscriber にリアルタイム翻訳機能を統合し、ASR + 翻訳のシームレスなパイプラインを提供する。
 
-#### 設計方針
+#### 設計決定事項
 
-| 選択肢 | 説明 | 採用 |
-|--------|------|------|
-| **A. TranslatingTranscriber** | StreamTranscriber を継承した新クラス | ❌ 継承より合成 |
-| **B. translator パラメータ追加** | StreamTranscriber に translator オプションを追加 | ✅ **採用** |
-| **C. 外部パイプライン** | 呼び出し側で手動連携 | △ 現状（Phase 4まで） |
+| 項目 | 決定 | 理由 |
+|------|------|------|
+| 統合方式 | translator パラメータ追加 | 継承より合成、後方互換性 |
+| TranscriptionResult | `translated_text` + `target_language` 追加 | `language` を source として再利用 |
+| デフォルト言語 | なし（translator 設定時は必須） | 明示的指定でミス防止 |
+| context_sentences | translator のデフォルトを使用 | 各エンジンに最適な設定を尊重 |
+| 翻訳エラー | `translated_text=None` + 警告ログ | 主機能（文字起こし）を保護 |
+| 非同期翻訳 | Phase 5 では同期のみ | 複雑性を避け、Phase 6 で検討 |
+| ライフサイクル | 呼び出し側が管理 | engine と同じパターン、一貫性 |
 
 #### 主要変更
 
@@ -1282,17 +1297,14 @@ StreamTranscriber にリアルタイム翻訳機能を統合し、ASR + 翻訳�
        end_time: float
        is_final: bool = True
        confidence: float = 1.0
-       language: str = ""
+       language: str = ""           # ASR 検出言語（= 翻訳元言語）
        source_id: str = "default"
-       # Phase 5 追加（末尾にオプショナルフィールドとして追加）
-       translated_text: Optional[str] = None
-       target_language: Optional[str] = None
+       # Phase 5 追加
+       translated_text: Optional[str] = None   # 翻訳結果
+       target_language: Optional[str] = None   # 翻訳先言語
    ```
 
-   **移行方針**:
-   - `TranscriptionResult` は新しい API（Phase 1 で実装）のため、**破壊的変更を容認**
-   - 新フィールドは末尾にオプショナルとして追加（デフォルト値 `None`）
-   - 既存テストは必要に応じて更新
+   **Note**: `source_language` は追加しない。既存の `language` フィールドを翻訳元言語として再利用。
 
 2. **StreamTranscriber の拡張**
    ```python
@@ -1300,18 +1312,23 @@ StreamTranscriber にリアルタイム翻訳機能を統合し、ASR + 翻訳�
        def __init__(
            self,
            engine: TranscriptionEngine,
-           translator: Optional[BaseTranslator] = None,  # 追加
-           source_lang: str = "ja",                      # 追加
-           target_lang: str = "en",                      # 追加
-           context_sentences: int = 2,                   # 追加
+           translator: Optional[BaseTranslator] = None,
+           source_lang: Optional[str] = None,  # translator 設定時は必須
+           target_lang: Optional[str] = None,  # translator 設定時は必須
            vad_config: Optional[VADConfig] = None,
            ...
        ):
            self._translator = translator
            self._source_lang = source_lang
            self._target_lang = target_lang
-           self._context_sentences = context_sentences
            self._context_buffer: List[str] = []
+
+           # バリデーション
+           if translator:
+               if not translator.is_initialized():
+                   raise ValueError("Translator not initialized. Call load_model() first.")
+               if source_lang is None or target_lang is None:
+                   raise ValueError("source_lang and target_lang are required when translator is set.")
    ```
 
 3. **翻訳パイプラインの追加**
@@ -1322,20 +1339,28 @@ StreamTranscriber にリアルタイム翻訳機能を統合し、ASR + 翻訳�
 
        # 翻訳（translator が設定されている場合）
        translated_text = None
+       target_language = None
        if self._translator and text.strip():
-           trans_result = self._translator.translate(
-               text,
-               self._source_lang,
-               self._target_lang,
-               context=self._context_buffer[-self._context_sentences:],
-           )
-           translated_text = trans_result.text
-           self._context_buffer.append(text)
+           try:
+               # translator のデフォルト context_sentences を使用
+               context_len = self._translator._default_context_sentences
+               trans_result = self._translator.translate(
+                   text,
+                   self._source_lang,
+                   self._target_lang,
+                   context=self._context_buffer[-context_len:],
+               )
+               translated_text = trans_result.text
+               target_language = self._target_lang
+               self._context_buffer.append(text)
+           except Exception as e:
+               logger.warning(f"Translation failed: {e}")
+               # 翻訳失敗しても文字起こし結果は返す
 
        return TranscriptionResult(
            text=text,
            translated_text=translated_text,
-           target_language=self._target_lang if translated_text else None,
+           target_language=target_language,
            ...
        )
    ```
@@ -1343,59 +1368,58 @@ StreamTranscriber にリアルタイム翻訳機能を統合し、ASR + 翻訳�
 #### 使用例
 
 ```python
-from livecap_core import (
-    StreamTranscriber,
-    EngineFactory,
-    TranslatorFactory,
-    MicrophoneSource,
-)
+from livecap_core import StreamTranscriber, EngineFactory, MicrophoneSource
+from livecap_core.translation import TranslatorFactory
 
-# ASR + Translator を初期化
+# ASR エンジン初期化
 engine = EngineFactory.create_engine("whispers2t_base", device="cuda")
 engine.load_model()
 
+# Translator 初期化（呼び出し側がライフサイクル管理）
 translator = TranslatorFactory.create_translator("google")
+# ローカルモデルの場合: translator.load_model()
 
 # StreamTranscriber に translator を渡す
 with StreamTranscriber(
     engine=engine,
     translator=translator,
-    source_lang="ja",
-    target_lang="en",
+    source_lang="ja",   # 必須
+    target_lang="en",   # 必須
 ) as transcriber:
     with MicrophoneSource() as mic:
         for result in transcriber.transcribe_sync(mic):
-            print(f"[JA] {result.text}")
+            print(f"[{result.language}] {result.text}")
             if result.translated_text:
-                print(f"[EN] {result.translated_text}")
+                print(f"[{result.target_language}] {result.translated_text}")
+            else:
+                print("(translation unavailable)")
+
+# クリーンアップ（呼び出し側が管理）
+# translator.cleanup()  # ローカルモデルの場合
+engine.cleanup()
 ```
 
-#### 非同期翻訳オプション
-
-翻訳がボトルネックになる場合、非同期翻訳オプションを提供:
+#### 翻訳なしモード（後方互換）
 
 ```python
-class StreamTranscriber:
-    def __init__(
-        self,
-        ...
-        async_translation: bool = False,  # 非同期翻訳モード
-    ):
-        self._async_translation = async_translation
+# translator を渡さない場合は従来通り動作
+with StreamTranscriber(engine=engine) as transcriber:
+    for result in transcriber.transcribe_sync(mic):
+        print(result.text)
+        # result.translated_text は None
 ```
-
-- `async_translation=False` (デフォルト): 同期翻訳、結果に `translated_text` が含まれる
-- `async_translation=True`: 翻訳を別スレッドで実行、翻訳完了時にコールバック
 
 #### 実装タスク
 
-1. `TranscriptionResult` に翻訳フィールド追加
+1. `TranscriptionResult` に `translated_text`, `target_language` フィールド追加
 2. `StreamTranscriber.__init__` に translator 関連パラメータ追加
-3. 文脈バッファ管理の実装
-4. `_process_segment` での翻訳処理追加
-5. 非同期翻訳モードの実装（オプション）
-6. ASR + 翻訳の統合テスト作成
-7. ドキュメント更新
+3. 初期化時のバリデーション実装
+4. 文脈バッファ管理の実装
+5. `_transcribe_segment` / `_transcribe_segment_async` での翻訳処理追加
+6. 翻訳エラー時の警告ログ実装
+7. ユニットテスト作成
+8. 統合テスト作成
+9. サンプルスクリプト作成
 
 #### 変更ファイル
 
@@ -1403,9 +1427,62 @@ class StreamTranscriber:
 |---------|------|------|
 | `livecap_core/transcription/result.py` | 更新 | 翻訳フィールド追加 |
 | `livecap_core/transcription/stream.py` | 更新 | translator 統合 |
+| `tests/core/transcription/test_result.py` | 更新 | 新フィールドのテスト |
 | `tests/core/transcription/test_stream.py` | 更新 | 翻訳統合テスト |
-| `tests/integration/test_translation.py` | 新規 | ASR+翻訳統合テスト |
+| `tests/integration/test_stream_translation.py` | 新規 | ASR+翻訳統合テスト |
 | `examples/realtime/realtime_translation.py` | 新規 | リアルタイム翻訳例 |
+
+### Phase 6: 拡張機能（将来）
+
+Phase 5 完了後、必要に応じて実装を検討する機能。
+
+#### 6.1 FileTranscriptionPipeline 翻訳統合
+
+ファイル文字起こしパイプラインへの翻訳機能統合。
+
+```python
+pipeline = FileTranscriptionPipeline(
+    segment_transcriber=engine.transcribe,
+    translator=translator,
+    source_lang="ja",
+    target_lang="en",
+)
+
+for result in pipeline.process("audio.wav"):
+    print(f"{result.text} → {result.translated_text}")
+```
+
+#### 6.2 非同期翻訳オプション
+
+翻訳がボトルネックになる場合の非同期翻訳モード。
+
+```python
+StreamTranscriber(
+    engine=engine,
+    translator=translator,
+    source_lang="ja",
+    target_lang="en",
+    async_translation=True,  # 非同期モード
+    translation_callback=on_translation_complete,
+)
+```
+
+検討事項:
+- 翻訳結果の順序保証
+- コールバック設計
+- タイムアウト処理
+
+#### 6.3 トップレベルエクスポート
+
+`livecap_core` トップレベルへの翻訳 API エクスポート。
+
+```python
+# 現状（Phase 5）
+from livecap_core.translation import TranslatorFactory
+
+# Phase 6 検討
+from livecap_core import TranslatorFactory  # トップレベルから直接
+```
 
 ## 使用例
 
@@ -1919,11 +1996,20 @@ def test_translation_result_to_event_dict():
 
 ### Phase 5（❌ 未完了）
 
-- [ ] `TranscriptionResult` に翻訳フィールドが追加されている
-- [ ] `StreamTranscriber` に translator パラメータが追加されている
-- [ ] 文脈バッファ管理が実装されている
-- [ ] ASR + 翻訳の統合テストがパスする
+- [ ] `TranscriptionResult` に `translated_text`, `target_language` フィールドが追加されている
+- [ ] `StreamTranscriber` に `translator`, `source_lang`, `target_lang` パラメータが追加されている
+- [ ] translator 設定時の初期化バリデーションが実装されている
+- [ ] 文脈バッファ管理が実装されている（translator の `_default_context_sentences` を使用）
+- [ ] 翻訳エラー時に `translated_text=None` + 警告ログが出力される
+- [ ] translator なしの後方互換動作が維持されている
+- [ ] ユニットテストがパスする
+- [ ] 統合テストがパスする
 - [ ] リアルタイム翻訳のサンプルスクリプトが作成されている
+
+### Phase 6（❌ 将来検討）
+
+- [ ] `FileTranscriptionPipeline` に翻訳機能が統合されている
+- [ ] （オプション）非同期翻訳モードが実装されている
 - [ ] （オプション）トップレベル `livecap_core` へ翻訳 API エクスポート
 
 ## 参考資料
@@ -1937,6 +2023,7 @@ def test_translation_result_to_event_dict():
 ---
 
 **作成日**: 2025-12-11
-**最終更新**: 2025-12-11
+**最終更新**: 2025-12-12
 **Issue**: #72
-**Phase**: 5 (StreamTranscriber 翻訳統合)
+**現在の Phase**: 5 (StreamTranscriber 翻訳統合)
+**次の Phase**: 6 (FileTranscriptionPipeline 翻訳統合、非同期翻訳)
