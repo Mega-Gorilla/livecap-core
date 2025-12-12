@@ -51,14 +51,23 @@
 | `tests/core/transcription/test_result.py` | ✅ 完了 | 5 | 翻訳フィールドテスト |
 | `examples/realtime/realtime_translation.py` | ✅ 完了 | 5 | リアルタイム翻訳サンプル |
 
-### Phase 6 計画中
+### Phase 6a 完了（2025-12-12）
 
 | コンポーネント | ステータス | Phase | 備考 |
 |---------------|-----------|-------|------|
-| `FileTranscriptionPipeline` translator 統合 | ❌ 未実装 | 6a | パラメータ追加、文脈管理 |
-| `FileSubtitleSegment` 翻訳フィールド | ❌ 未実装 | 6a | `translated_text`, `target_language` |
-| 翻訳 SRT 出力オプション | ❌ 未実装 | 6a | `translated_srt_path` パラメータ |
-| トップレベルエクスポート | ❌ 未実装 | 6b | `TranslatorFactory` 等 |
+| `FileTranscriptionPipeline` translator 統合 | ✅ 完了 | 6a | パラメータ追加、文脈管理 |
+| `FileSubtitleSegment` 翻訳フィールド | ✅ 完了 | 6a | `translated_text`, `target_language` |
+| 翻訳 SRT 出力オプション | ✅ 完了 | 6a | `write_translated_subtitles` パラメータ |
+| `tests/core/transcription/test_file_pipeline_translation.py` | ✅ 完了 | 6a | ユニットテスト（25件） |
+| `examples/batch/batch_translation.py` | ✅ 完了 | 6a | バッチ翻訳サンプル |
+
+### Phase 6b スキップ
+
+| コンポーネント | ステータス | Phase | 備考 |
+|---------------|-----------|-------|------|
+| トップレベルエクスポート | ⏭️ スキップ | 6b | 現状 `livecap_core.translation` で十分 |
+
+**スキップ理由**: 機能的な価値がなく、名前空間の肥大化を避けるため。ユーザー要望があれば実装。
 
 ### Phase 7 計画（将来）
 
@@ -681,25 +690,28 @@ StreamTranscriber(
 - [x] ユニットテストがパスする
 - [x] リアルタイム翻訳のサンプルスクリプトが作成されている
 
-### Phase 6a（❌ 未実装）
+### Phase 6a（✅ 完了）
 
-- [ ] `FileSubtitleSegment` に `translated_text`, `target_language` フィールドが追加されている
-- [ ] `FileTranscriptionPipeline` に `translator`, `source_lang`, `target_lang` パラメータが追加されている
-- [ ] translator 設定時の初期化バリデーションが実装されている
-- [ ] 文脈バッファ管理がファイル間リセットで実装されている
-- [ ] 翻訳エラー時に `translated_text=None` + 警告ログが出力される
-- [ ] `translated_srt_path` オプションが実装されている
-- [ ] translator なしの後方互換動作が維持されている
-- [ ] ユニットテストがパスする
-- [ ] 統合テストがパスする
-- [ ] バッチ翻訳のサンプルスクリプトが作成されている
+- [x] `FileSubtitleSegment` に `translated_text`, `target_language` フィールドが追加されている
+- [x] `FileTranscriptionPipeline` に `translator`, `source_lang`, `target_lang` パラメータが追加されている
+- [x] translator 設定時の初期化バリデーションが実装されている
+- [x] 文脈バッファ管理がファイル間リセットで実装されている
+- [x] 翻訳エラー時に `translated_text=None` + 警告ログが出力される
+- [x] `write_translated_subtitles` オプションが実装されている
+- [x] translator なしの後方互換動作が維持されている
+- [x] ユニットテストがパスする（25件）
+- [x] バッチ翻訳のサンプルスクリプトが作成されている
 
-### Phase 6b（❌ 未実装 - オプション）
+### Phase 6b（⏭️ スキップ）
 
-- [ ] `TranslatorFactory` が `livecap_core` トップレベルからエクスポートされている
-- [ ] `TranslationResult` が `livecap_core` トップレベルからエクスポートされている
-- [ ] `BaseTranslator` が `livecap_core` トップレベルからエクスポートされている
-- [ ] `__all__` リストが更新されている
+トップレベルエクスポートは現状不要と判断。`livecap_core.translation` からのインポートで十分。
+
+- [ ] ~~`TranslatorFactory` が `livecap_core` トップレベルからエクスポートされている~~
+- [ ] ~~`TranslationResult` が `livecap_core` トップレベルからエクスポートされている~~
+- [ ] ~~`BaseTranslator` が `livecap_core` トップレベルからエクスポートされている~~
+- [ ] ~~`__all__` リストが更新されている~~
+
+**スキップ理由**: 機能的な価値がなく、名前空間の肥大化を避けるため。
 
 ### Phase 7（📋 将来計画）
 
