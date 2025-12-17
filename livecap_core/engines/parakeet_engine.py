@@ -28,6 +28,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning, module="pydub")
 
 from .base_engine import BaseEngine
 from .model_memory_cache import ModelMemoryCache
+from .library_preloader import LibraryPreloader
 
 # リソースパス解決用のヘルパー関数をインポート
 from livecap_core.utils import (
@@ -89,7 +90,10 @@ class ParakeetEngine(BaseEngine):
 
         # デバイスの自動検出と設定（共通関数を使用）
         self.torch_device = detect_device(device, "Parakeet")
-        
+
+        # ライブラリ事前ロードを開始（Canaryと同様）
+        LibraryPreloader.start_preloading(self.engine_name)
+
     def _check_dependencies(self) -> None:
         """
         Step 1: 依存関係の確認（0-10%）
@@ -199,7 +203,10 @@ class ParakeetEngine(BaseEngine):
             )
 
             # キャッシュに保存
-            ModelMemoryCache.set(cache_key, model)
+            # 環境変数でstrong cacheが有効な場合は強参照でキャッシュ
+            use_strong_cache = os.environ.get('LIVECAP_ENGINE_STRONG_CACHE', '').lower() in ('1', 'true', 'yes')
+            ModelMemoryCache.set(cache_key, model, strong=use_strong_cache)
+            logger.info(f"モデルをキャッシュに保存: {cache_key} (strong={use_strong_cache})")
 
             return model
 

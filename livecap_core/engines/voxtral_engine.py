@@ -260,9 +260,11 @@ class VoxtralEngine(BaseEngine):
             processor = AutoProcessor.from_pretrained(str(model_path))
 
             # タプルとしてキャッシュに保存
+            # 環境変数でstrong cacheが有効な場合は強参照でキャッシュ
             result = (model, processor)
-            ModelMemoryCache.set(cache_key, result)
-            logger.info(f"モデルをキャッシュに保存: {cache_key}")
+            use_strong_cache = os.environ.get('LIVECAP_ENGINE_STRONG_CACHE', '').lower() in ('1', 'true', 'yes')
+            ModelMemoryCache.set(cache_key, result, strong=use_strong_cache)
+            logger.info(f"モデルをキャッシュに保存: {cache_key} (strong={use_strong_cache})")
 
             self.report_progress(90, "Voxtral: Ready")
             return result

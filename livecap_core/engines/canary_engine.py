@@ -224,8 +224,10 @@ class CanaryEngine(BaseEngine):
             self.report_progress(85, "Model loaded successfully")
 
             # キャッシュに保存
-            ModelMemoryCache.set(cache_key, model)
-            logger.info(f"モデルをキャッシュに保存: {cache_key}")
+            # 環境変数でstrong cacheが有効な場合は強参照でキャッシュ
+            use_strong_cache = os.environ.get('LIVECAP_ENGINE_STRONG_CACHE', '').lower() in ('1', 'true', 'yes')
+            ModelMemoryCache.set(cache_key, model, strong=use_strong_cache)
+            logger.info(f"モデルをキャッシュに保存: {cache_key} (strong={use_strong_cache})")
 
             self.report_progress(90, "Canary: Ready")
             return model
