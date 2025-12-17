@@ -141,15 +141,28 @@ rg "LoadPhase|ModelLoadingPhases|model_loading_phases" livecap_core/
 > **※1**: `tracemalloc` は Python 管理メモリのみ計測。Torch/ONNX 等のネイティブメモリは捕捉できない場合あり。
 > **※2**: Torch ベースエンジンのみ対応。非 Torch エンジン（ONNX 等）では skip/NA を許容。
 
-#### ベースライン計測
+#### ベースライン計測結果 (2025-12-17)
 
-```bash
-# 計測コマンド例（pytest-benchmark 未導入のため time で代替）
-time uv run pytest tests/integration/engines -m engine_smoke -v
+**環境**: RTX 4070 Ti (11.6 GB VRAM), Python 3.11
 
-# 個別エンジンの計測
-time uv run python -c "from livecap_core import EngineFactory; e = EngineFactory.create_engine('whispers2t_base'); e.load_model()"
-```
+##### WhisperS2T (GPU)
+
+| Model | Load(ms) | VRAM(MB) | Infer(5s, ms) | RTF |
+|-------|----------|----------|---------------|-----|
+| tiny | 4161 | 1 | 281 | 0.056x |
+| base | 372 | 9 | 276 | 0.055x |
+| small | 645 | 10 | 309 | 0.062x |
+| **large-v3-turbo** | 4869 | - | **201** | **0.040x** |
+
+> **Note**: RTF < 1.0 はリアルタイムより高速。large-v3-turbo が最も高速（RTF 0.040x = 25倍速）
+
+##### 他エンジン
+
+| Engine | Status | Note |
+|--------|--------|------|
+| ReazonSpeech | N/A | `sherpa_onnx` 依存が環境未インストール |
+| Parakeet/Canary | 未計測 | NeMo 依存 |
+| Voxtral | 未計測 | Transformers 依存 |
 
 #### エンジン別改善ポイント
 
