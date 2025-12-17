@@ -95,9 +95,8 @@ class BaseEngine(ABC):
             self.report_progress(15)
 
             # Step 3: ファイル確認 (15-20%)
+            # Note: 進捗 15-20% は _get_local_model_path() と _get_or_download_model() で報告される
             self.report_progress(15, "Checking model files...")
-            # ファイル確認はダウンロード処理内で実施
-            self.report_progress(20)
 
             # Step 4: モデル取得（ダウンロードまたはキャッシュ）(20-70%)
             model_path = self._get_or_download_model(models_dir)
@@ -256,8 +255,14 @@ class BaseEngine(ABC):
         model_name = self.model_metadata.get('name', 'model').replace('/', '--')
         return models_dir / f"{model_name}.bin"
     
-    def _download_model(self, target_path: Path, progress_callback: Callable) -> None:
-        """モデルをダウンロード（子クラスで実装必須）"""
+    def _download_model(self, target_path: Path, progress_callback: Callable, model_manager=None) -> None:
+        """モデルをダウンロード（子クラスで実装必須）
+
+        Args:
+            target_path: ダウンロード先のパス
+            progress_callback: 進捗報告コールバック (current, total) -> None
+            model_manager: モデルマネージャー（オプション）
+        """
         raise NotImplementedError("_download_model must be implemented in subclass")
     
     def _load_model_from_path(self, model_path: Path) -> Any:
