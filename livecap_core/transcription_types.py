@@ -77,10 +77,7 @@ class TranscriptionEventDict(TypedDict, total=False):
     # === 品質指標 ===
     audio_quality: Optional[float]  # 音声品質スコア
     noise_level: Optional[float]    # ノイズレベル
-    
-    # === 話者識別 ===
-    speaker: Optional[str]  # 話者名
-    
+
     # === 拡張用 ===
     metadata: Optional[Dict[str, Any]]  # その他のメタデータ
 
@@ -137,7 +134,6 @@ class TranslationRequestEventDict(TypedDict, total=False):
     source_language: str        # ソース言語コード
     target_language: str        # ターゲット言語コード
     timestamp: float            # Unix timestamp
-    speaker: Optional[str]      # 話者名
     metadata: Optional[Dict[str, Any]]  # 追加メタデータ
 
 
@@ -155,7 +151,6 @@ class TranslationResultEventDict(TypedDict, total=False):
     target_language: str        # ターゲット言語
     timestamp: float            # Unix timestamp
     confidence: Optional[float]  # 翻訳信頼度
-    speaker: Optional[str]      # 話者名
     metadata: Optional[Dict[str, Any]]
 
 
@@ -238,7 +233,6 @@ def _rehydrate_event_dict(data: dict) -> Optional[UiEventDict]:
             'speech_probability': data.get('speech_probability'),
             'audio_quality': data.get('audio_quality'),
             'noise_level': data.get('noise_level'),
-            'speaker': data.get('speaker'),
         }
 
         timestamp = data.get('timestamp') or metadata.get('timestamp')
@@ -396,8 +390,8 @@ def create_transcription_event(
     
     # 任意フィールドを追加
     valid_optional = ['confidence', 'language', 'phase', 'display_text',
-                     'vad_state', 'speech_probability', 'audio_quality', 
-                     'noise_level', 'metadata', 'speaker']
+                     'vad_state', 'speech_probability', 'audio_quality',
+                     'noise_level', 'metadata']
     for key, value in kwargs.items():
         if key in valid_optional and value is not None:
             result[key] = value
@@ -526,11 +520,7 @@ def create_translation_request_event(
     # メタデータを追加
     if 'metadata' in kwargs:
         result['metadata'] = kwargs['metadata']
-    
-    # speakerフィールドを追加（存在する場合）
-    if 'speaker' in kwargs:
-        result['speaker'] = kwargs['speaker']
-    
+
     return result
 
 
@@ -541,7 +531,6 @@ def create_translation_result_event(
     source_language: str,
     target_language: str,
     timestamp: Optional[float] = None,
-    speaker: Optional[str] = None,
     **kwargs
 ) -> TranslationResultEventDict:
     """
@@ -577,13 +566,7 @@ def create_translation_result_event(
         result['confidence'] = kwargs['confidence']
     if 'metadata' in kwargs:
         result['metadata'] = kwargs['metadata']
-    
-    # speakerフィールドを追加（存在する場合）
-    if speaker is not None:
-        result['speaker'] = speaker
-    elif 'speaker' in kwargs:
-        result['speaker'] = kwargs['speaker']
-    
+
     return result
 
 
