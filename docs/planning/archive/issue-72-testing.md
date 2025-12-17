@@ -2,7 +2,7 @@
 
 翻訳プラグインシステムのテスト計画。
 
-> **Note**: 進捗状況については `docs/planning/issue-72/README.md` を参照。
+> **Note**: 進捗状況については [`./issue-72/README.md`](./issue-72/README.md) を参照。
 
 ## テストマーカー
 
