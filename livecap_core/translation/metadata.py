@@ -50,7 +50,7 @@ class TranslatorMetadata:
             supported_pairs=[("ja", "en"), ("en", "ja")],  # Phase 1: ja↔en のみ
             requires_model_load=True,
             requires_gpu=False,
-            default_context_sentences=2,
+            default_context_sentences=0,  # Issue #190: 文脈抽出が不安定なため無効化
             default_params={"device": "cpu", "compute_type": "int8"},
         ),
         "riva_instruct": TranslatorInfo(

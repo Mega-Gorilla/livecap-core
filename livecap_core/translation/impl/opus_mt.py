@@ -189,8 +189,9 @@ class OpusMTTranslator(BaseTranslator):
             )
 
         # 文脈連結（改行区切りで段落として認識させる）
+        # default_context_sentences=0 の場合は context を無視（文脈無効化）
         num_context_sentences = 0
-        if context:
+        if context and self._default_context_sentences > 0:
             ctx = context[-self._default_context_sentences :]
             num_context_sentences = len(ctx)
             full_text = "\n".join(ctx) + "\n" + text
@@ -216,7 +217,7 @@ class OpusMTTranslator(BaseTranslator):
             raise TranslationModelError(f"Translation failed: {e}") from e
 
         # 文脈を含めた場合、最後の文を抽出
-        if context:
+        if context and self._default_context_sentences > 0:
             result = self._extract_relevant_part(result, num_context_sentences)
 
         return TranslationResult(

@@ -94,6 +94,37 @@ class TestOpusMTTranslatorBasic:
         # default_context_sentences=0 なので、context を渡しても使用されない
         assert translator.default_context_sentences == 0
 
+    def test_context_not_used_when_default_is_zero(self):
+        """default_context_sentences=0 の場合、context が渡されても使用されない"""
+        translator = OpusMTTranslator()  # default_context_sentences=0
+
+        # モック設定
+        mock_model = MagicMock()
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.encode.return_value = [1, 2, 3]
+        mock_tokenizer.convert_ids_to_tokens.return_value = ["▁Hello"]
+        mock_tokenizer.convert_tokens_to_ids.return_value = [10]
+        mock_tokenizer.decode.return_value = "Hello"
+
+        mock_result = MagicMock()
+        mock_result.hypotheses = [["▁Hello"]]
+        mock_model.translate_batch.return_value = [mock_result]
+
+        translator._model = mock_model
+        translator._tokenizer = mock_tokenizer
+        translator._initialized = True
+
+        # context を渡して翻訳
+        context = ["前の文1", "前の文2"]
+        translator.translate("こんにちは", "ja", "en", context=context)
+
+        # encode に渡された引数を確認
+        call_args = mock_tokenizer.encode.call_args[0][0]
+        # context が含まれていない（"こんにちは" のみ）
+        assert "前の文1" not in call_args
+        assert "前の文2" not in call_args
+        assert "こんにちは" in call_args
+
 
 class TestOpusMTTranslatorNotLoaded:
     """モデル未ロード時のテスト"""

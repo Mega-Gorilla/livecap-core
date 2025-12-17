@@ -483,8 +483,11 @@ class StreamTranscriber:
             return None, None
 
         # 公開プロパティから context_sentences を取得
+        # context_len=0 の場合は文脈を使わない（[-0:] は [:] と同義で全履歴が渡るため）
         context_len = self._translator.default_context_sentences
-        context: List[str] = list(self._context_buffer)[-context_len:]
+        context: Optional[List[str]] = (
+            list(self._context_buffer)[-context_len:] if context_len > 0 else None
+        )
 
         try:
             trans_result = self._translator.translate(
@@ -528,8 +531,11 @@ class StreamTranscriber:
             return None, None
 
         # 公開プロパティから context_sentences を取得
+        # context_len=0 の場合は文脈を使わない（[-0:] は [:] と同義で全履歴が渡るため）
         context_len = self._translator.default_context_sentences
-        context: List[str] = list(self._context_buffer)[-context_len:]
+        context: Optional[List[str]] = (
+            list(self._context_buffer)[-context_len:] if context_len > 0 else None
+        )
 
         def do_translate() -> str:
             """翻訳実行（executor 内で呼ばれる）"""
