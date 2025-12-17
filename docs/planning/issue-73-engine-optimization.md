@@ -56,12 +56,14 @@ def load_model(self):
     # ... 6段階続く
 
 # After: シンプルなフック型進捗報告
-def load_model(self, progress_callback: Optional[Callable[[int, str], None]] = None) -> None:
-    """モデルをロード（オプショナルな進捗報告）"""
+# 既存の set_progress_callback() との互換性を維持
+def load_model(self) -> None:
+    """モデルをロード（進捗報告は set_progress_callback() で事前設定）"""
     def report(percent: int, message: str = ""):
-        if progress_callback:
-            progress_callback(percent, message)
-        logger.info(f"[{self.engine_name}] [{percent}%] {message}")
+        if self.progress_callback:
+            self.progress_callback(percent, message)
+        if message:
+            logger.info(f"[{self.engine_name}] [{percent}%] {message}")
 
     report(0, "Checking dependencies...")
     self._check_dependencies()
@@ -69,8 +71,11 @@ def load_model(self, progress_callback: Optional[Callable[[int, str], None]] = N
     report(10, "Preparing model directory...")
     models_dir = self._prepare_model_directory()
 
-    # ... シンプルな進捗報告
+    # ... シンプルな進捗報告（LoadPhase への依存なし）
 ```
+
+> **Note**: 既存 API との互換性のため `set_progress_callback()` を維持。
+> `load_model(progress_callback=...)` 形式は将来の拡張として検討可能。
 
 ---
 
@@ -86,8 +91,8 @@ def load_model(self, progress_callback: Optional[Callable[[int, str], None]] = N
 - エンジン固有のメッセージは各エンジンで定義
 
 **影響範囲**:
-- `base_engine.py` のみ
-- 各エンジン実装への変更不要（`get_status_message()` 呼び出しを文字列に置換）
+- `base_engine.py`: `register_fallbacks()` と `get_status_message()` を削除
+- **各エンジン実装**: `self.get_status_message(...)` 呼び出しを直接文字列に置換（全エンジンで修正必要）
 
 #### 5A-2: LoadPhase enum 依存の削減
 
@@ -120,14 +125,20 @@ def load_model(self, progress_callback: Optional[Callable[[int, str], None]] = N
 | `load_time_cached` | キャッシュ済みモデルのロード時間 | 同上 |
 | `first_inference_latency` | 最初の推論レイテンシ | 同上 |
 | `rtf` | Real-Time Factor | `inference_time / audio_duration` |
-| `peak_ram_mb` | CPU RAM ピーク使用量 | `tracemalloc` |
-| `peak_vram_mb` | GPU VRAM ピーク使用量 | `torch.cuda.max_memory_allocated()` |
+| `peak_ram_mb` | CPU RAM ピーク使用量 | `tracemalloc`（※1） |
+| `peak_vram_mb` | GPU VRAM ピーク使用量 | `torch.cuda.max_memory_allocated()`（※2） |
+
+> **※1**: `tracemalloc` は Python 管理メモリのみ計測。Torch/ONNX 等のネイティブメモリは捕捉できない場合あり。
+> **※2**: Torch ベースエンジンのみ対応。非 Torch エンジン（ONNX 等）では skip/NA を許容。
 
 #### ベースライン計測
 
 ```bash
-# 計測コマンド例
-uv run pytest tests/integration/engines -m engine_smoke --benchmark
+# 計測コマンド例（pytest-benchmark 未導入のため time で代替）
+time uv run pytest tests/integration/engines -m engine_smoke -v
+
+# 個別エンジンの計測
+time uv run python -c "from livecap_core import EngineFactory; e = EngineFactory.create_engine('whispers2t_base'); e.load_model()"
 ```
 
 #### エンジン別改善ポイント
