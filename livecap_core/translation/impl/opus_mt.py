@@ -34,6 +34,14 @@ class OpusMTTranslator(BaseTranslator):
     Helsinki-NLP の OPUS-MT モデルを使用したローカル翻訳エンジン。
     CTranslate2 による INT8 量子化で高速・省メモリ推論。
 
+    Note:
+        デフォルトで文脈機能は無効（default_context_sentences=0）。
+        OPUS-MT は改行を保持せず、文境界の検出が不安定なため、
+        文脈連結による翻訳品質向上より誤抽出リスクが高い。
+        文脈を活用したい場合は RivaInstructTranslator を推奨。
+
+        See: https://github.com/Mega-Gorilla/livecap-cli/issues/190
+
     Examples:
         >>> translator = OpusMTTranslator(source_lang="ja", target_lang="en")
         >>> translator.load_model()
@@ -49,6 +57,7 @@ class OpusMTTranslator(BaseTranslator):
         model_name: Optional[str] = None,
         device: str = "cpu",
         compute_type: str = "int8",
+        default_context_sentences: int = 0,
         **kwargs,
     ):
         """
@@ -60,9 +69,11 @@ class OpusMTTranslator(BaseTranslator):
             model_name: HuggingFace モデル名（省略時は言語ペアから自動生成）
             device: 推論デバイス（"cpu" or "cuda"、デフォルト: "cpu"）
             compute_type: 量子化タイプ（"int8", "float16" 等、デフォルト: "int8"）
+            default_context_sentences: 文脈として使用する文数（デフォルト: 0）。
+                OPUS-MT は文脈抽出が不安定なため、デフォルトは無効。
             **kwargs: BaseTranslator に渡すパラメータ
         """
-        super().__init__(**kwargs)
+        super().__init__(default_context_sentences=default_context_sentences, **kwargs)
         self.source_lang = source_lang
         self.target_lang = target_lang
 
@@ -147,7 +158,9 @@ class OpusMTTranslator(BaseTranslator):
             text: 翻訳対象テキスト
             source_lang: ソース言語コード (BCP-47)
             target_lang: ターゲット言語コード (BCP-47)
-            context: 過去の文脈（直近N文）。翻訳精度向上のため使用。
+            context: 過去の文脈（直近N文）。デフォルトでは無効（default_context_sentences=0）。
+                OPUS-MT は改行を保持せず文境界検出が不安定なため、文脈使用時は
+                誤抽出のリスクがある。文脈を活用したい場合は RivaInstructTranslator を推奨。
 
         Returns:
             TranslationResult
@@ -176,8 +189,9 @@ class OpusMTTranslator(BaseTranslator):
             )
 
         # 文脈連結（改行区切りで段落として認識させる）
+        # default_context_sentences=0 の場合は context を無視（文脈無効化）
         num_context_sentences = 0
-        if context:
+        if context and self._default_context_sentences > 0:
             ctx = context[-self._default_context_sentences :]
             num_context_sentences = len(ctx)
             full_text = "\n".join(ctx) + "\n" + text
@@ -203,7 +217,7 @@ class OpusMTTranslator(BaseTranslator):
             raise TranslationModelError(f"Translation failed: {e}") from e
 
         # 文脈を含めた場合、最後の文を抽出
-        if context:
+        if context and self._default_context_sentences > 0:
             result = self._extract_relevant_part(result, num_context_sentences)
 
         return TranslationResult(
@@ -218,6 +232,11 @@ class OpusMTTranslator(BaseTranslator):
         翻訳結果から対象部分（最後の文）を抽出
 
         OPUS-MT は改行を保持しないため、文末記号で分割して最後の文を抽出する。
+
+        Warning:
+            この抽出ロジックは不安定で、誤抽出のリスクがある。
+            デフォルトでは default_context_sentences=0 のため、このメソッドは呼ばれない。
+            文脈を有効にした場合のみ使用される。
 
         Args:
             translated: 翻訳結果テキスト

@@ -111,6 +111,17 @@ class TestTranslatorFactoryOpusMT:
         assert translator.device == "cpu"
         assert translator.compute_type == "int8"
 
+    @pytest.mark.skipif(not HAS_OPUS_MT_DEPS, reason="OPUS-MT deps not installed")
+    def test_opus_mt_default_context_sentences_is_zero(self):
+        """OPUS-MT の default_context_sentences はデフォルト 0（Issue #190）
+
+        OPUS-MT は改行を保持せず文境界検出が不安定なため、
+        文脈機能はデフォルトで無効化されている。
+        """
+        translator = TranslatorFactory.create_translator("opus_mt")
+        assert translator._default_context_sentences == 0
+        assert translator.default_context_sentences == 0
+
     @pytest.mark.skipif(HAS_OPUS_MT_DEPS, reason="OPUS-MT deps installed")
     def test_opus_mt_not_implemented_without_deps(self):
         """依存関係未インストールで NotImplementedError"""

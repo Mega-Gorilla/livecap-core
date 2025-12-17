@@ -626,8 +626,13 @@ class FileTranscriptionPipeline:
         """
         try:
             # Get context from buffer
+            # context_len=0 の場合は文脈を使わない（[-0:] は [:] と同義で全履歴が渡るため）
             context_len = translator.default_context_sentences
-            context = list(context_buffer)[-context_len:] if context_buffer else None
+            context = (
+                list(context_buffer)[-context_len:]
+                if context_buffer and context_len > 0
+                else None
+            )
 
             # Treat timeout <= 0 as no timeout (invalid value)
             effective_timeout = timeout if timeout is not None and timeout > 0 else None
