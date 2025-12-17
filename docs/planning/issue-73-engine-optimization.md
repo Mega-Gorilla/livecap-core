@@ -149,12 +149,13 @@ rg "LoadPhase|ModelLoadingPhases|model_loading_phases" livecap_core/
 
 | Model | Load(ms) | VRAM(MB) | Infer(5s, ms) | RTF |
 |-------|----------|----------|---------------|-----|
-| tiny | 4161 | 1 | 281 | 0.056x |
-| base | 372 | 9 | 276 | 0.055x |
-| small | 645 | 10 | 309 | 0.062x |
-| **large-v3-turbo** | 4869 | - | **201** | **0.040x** |
+| tiny | 4161 | N/A | 281 | 0.056x |
+| base | 372 | N/A | 276 | 0.055x |
+| small | 645 | N/A | 309 | 0.062x |
+| **large-v3-turbo** | 4869 | N/A | **201** | **0.040x** |
 
 > **Note**: RTF < 1.0 はリアルタイムより高速。large-v3-turbo が最も高速（RTF 0.040x = 25倍速）
+> **VRAM 計測について**: WhisperS2T は CTranslate2 ベースのため、`torch.cuda.max_memory_allocated()` では実 VRAM を計測できない。実際の VRAM 使用量は nvidia-smi 等で別途確認が必要。
 
 ##### NeMo エンジン (GPU)
 
@@ -177,11 +178,13 @@ rg "LoadPhase|ModelLoadingPhases|model_loading_phases" livecap_core/
 
 | エンジン | ロード時間 | VRAM | RTF | 評価 |
 |----------|------------|------|-----|------|
-| WhisperS2T (large-v3-turbo) | 4.9s | - | **0.040x** | 最速推論、実用最適 |
-| WhisperS2T (base) | **0.4s** | 9MB | 0.055x | 最速ロード |
+| WhisperS2T (large-v3-turbo) | 4.9s | N/A※ | **0.040x** | 最速推論、実用最適 |
+| WhisperS2T (base) | **0.4s** | N/A※ | 0.055x | 最速ロード |
 | Parakeet | 62.5s | 2417MB | 0.075x | VRAM 効率◎ |
 | Canary | 67.6s | 6830MB | 0.080x | NeMo オーバーヘッド大 |
 | Voxtral | 22.1s | 8923MB | OOM | 12GB+ VRAM 推奨 |
+
+> ※ WhisperS2T は CTranslate2 ベースのため torch VRAM 計測対象外
 
 #### エンジン別改善ポイント
 
