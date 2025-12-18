@@ -135,8 +135,35 @@ livecap-core --as-json        # JSON出力
 > 理由: 新しいサブコマンド CLI を古い `livecap-core` で実装してからすぐに `livecap-cli` に
 > 変更するのは二度手間であり、最初から `livecap-cli` として提供する方が効率的。
 
-**互換性方針:** Epic #64 に従い、既存フラグ (`--info`, `--ensure-ffmpeg`, `--as-json`) と
-旧エントリポイント (`livecap-core`) は**完全に廃止**する。deprecation warning は設けない。
+**互換性方針:** Epic #64 に従い、以下を**完全に廃止**する。deprecation warning は設けない。
+
+- 既存フラグ (`--info`, `--ensure-ffmpeg`, `--as-json`)
+- 旧エントリポイント (`livecap-core`)
+- 旧モジュール名 (`livecap_core`) → `livecap_cli` に変更
+
+> **Python API について:** パッケージ名 (`livecap-cli`) とモジュール名 (`livecap_cli`) を
+> 一致させることで、ユーザー体験を向上させる。`pip install livecap-cli` したら
+> `from livecap_cli import ...` でインポートできるのが自然。
+> 利用者がほぼいないプレリリース段階の今が変更の最適なタイミング。
+
+#### 6B-0: モジュール名変更
+
+`livecap_core/` ディレクトリを `livecap_cli/` にリネーム:
+
+```bash
+# ディレクトリリネーム
+mv livecap_core/ livecap_cli/
+
+# 影響範囲
+- livecap_core/ → livecap_cli/  # モジュールディレクトリ
+- tests/         # import 文を更新
+- examples/      # import 文を更新
+- docs/          # 参照を更新
+- CLAUDE.md      # 参照を更新
+```
+
+> **Note:** 相対インポート (`from .engines import ...`) は影響を受けない。
+> 変更が必要なのは絶対インポート (`from livecap_core import ...`) のみ。
 
 #### 6B-1: エントリポイント変更 + サブコマンド構造の導入
 
@@ -147,7 +174,7 @@ livecap-core --as-json        # JSON出力
 name = "livecap-cli"  # パッケージ名変更
 
 [project.scripts]
-livecap-cli = "livecap_core.cli:main"  # 新規（唯一のエントリポイント）
+livecap-cli = "livecap_cli.cli:main"  # 新規（唯一のエントリポイント）
 # livecap-core は廃止（Epic #64 方針）
 ```
 
@@ -171,7 +198,7 @@ livecap-core --as-json         # → livecap-cli info --as-json
 
 ```python
 def cmd_devices(args):
-    from livecap_core import MicrophoneSource
+    from livecap_cli import MicrophoneSource
     devices = MicrophoneSource.list_devices()
     for dev in devices:
         default = " (default)" if dev.is_default else ""
@@ -182,7 +209,7 @@ def cmd_devices(args):
 
 ```python
 def cmd_engines(args):
-    from livecap_core.engines.metadata import EngineMetadata
+    from livecap_cli.engines.metadata import EngineMetadata
     for engine_id, meta in EngineMetadata.get_all().items():
         print(f"{engine_id}: {meta.display_name}")
 ```
@@ -191,7 +218,7 @@ def cmd_engines(args):
 
 ```python
 def cmd_translators(args):
-    from livecap_core.translation.metadata import TranslatorMetadata
+    from livecap_cli.translation.metadata import TranslatorMetadata
     for tid, info in TranslatorMetadata.get_all().items():
         gpu = " (GPU)" if info.requires_gpu else ""
         print(f"{tid}: {info.display_name}{gpu}")
@@ -233,7 +260,7 @@ livecap-cli transcribe input.mp4 -o output.srt \
 > これは Issue #74 の仕様 (`auto/gpu/cpu`) に準拠し、ユーザーフレンドリーな表記を優先する。
 
 > **モデルサイズについて:** CLI のデフォルトは `base` だが、エンジン API のデフォルトは
-> `large-v3` (`livecap_core/engines/metadata.py:147`)。CLI では起動速度とリソース効率を
+> `large-v3` (`livecap_cli/engines/metadata.py:147`)。CLI では起動速度とリソース効率を
 > 優先し、ユーザーが明示的に `--model-size large-v3` を指定した場合のみ高精度モードを使用する。
 
 > **VAD バックエンド選択について:** VAD バックエンド選択は既に API レベルで実装済み
@@ -291,6 +318,8 @@ Phase 6B (CLI実装 + エントリポイント変更)  [中リスク, 1-2日]
 - [ ] 既存テスト通過
 
 ### Phase 6B (CLI 実装 + エントリポイント変更)
+- [ ] `livecap_core/` → `livecap_cli/` にリネーム
+- [ ] tests/examples/docs の import 文を更新
 - [ ] pyproject.toml 更新 (`name = "livecap-cli"`, エントリポイント変更)
 - [ ] サブコマンド構造導入（既存フラグは完全廃止）
 - [ ] `info` コマンド実装
@@ -311,13 +340,15 @@ Phase 6B (CLI実装 + エントリポイント変更)  [中リスク, 1-2日]
 | ファイル | 役割 |
 |---------|------|
 | `pyproject.toml` | パッケージ設定 |
-| `livecap_core/cli.py` | CLI エントリポイント |
-| `livecap_core/audio_sources/microphone.py` | マイク入力 |
-| `livecap_core/transcription/file_pipeline.py` | ファイル文字起こし |
-| `livecap_core/transcription/stream.py` | リアルタイム文字起こし |
-| `livecap_core/engines/metadata.py` | エンジンメタデータ |
-| `livecap_core/translation/metadata.py` | 翻訳器メタデータ |
+| `livecap_cli/cli.py` | CLI エントリポイント |
+| `livecap_cli/audio_sources/microphone.py` | マイク入力 |
+| `livecap_cli/transcription/file_pipeline.py` | ファイル文字起こし |
+| `livecap_cli/transcription/stream.py` | リアルタイム文字起こし |
+| `livecap_cli/engines/metadata.py` | エンジンメタデータ |
+| `livecap_cli/translation/metadata.py` | 翻訳器メタデータ |
 | `examples/realtime/async_microphone.py` | マイク入力サンプル |
+
+> **Note:** `livecap_core/` は `livecap_cli/` にリネームされる（Phase 6B-0）。
 
 ---
 
