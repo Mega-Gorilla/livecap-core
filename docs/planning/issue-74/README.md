@@ -123,16 +123,29 @@ livecap-core --as-json        # JSON出力
 - [ ] `pip install livecap-core[all]` が動作
 - [ ] 既存の extras が引き続き動作
 
-### Phase 6B: CLI コマンド実装 (中リスク)
+### Phase 6B: CLI コマンド実装 + エントリポイント変更 (中リスク)
 
-**目的:** `transcribe`, `devices`, `engines` コマンドの実装
+**目的:** `transcribe`, `devices`, `engines` コマンドの実装と `livecap-cli` エントリポイント導入
 
-**互換性方針:** Epic #64 に従い、既存フラグ (`--info`, `--ensure-ffmpeg`, `--as-json`) は
-**完全に廃止**し、サブコマンド構造に移行する。deprecation warning は設けない。
+> **Note:** 当初 Phase 6C で予定していたエントリポイント変更を Phase 6B に統合。
+> 理由: 新しいサブコマンド CLI を古い `livecap-core` で実装してからすぐに `livecap-cli` に
+> 変更するのは二度手間であり、最初から `livecap-cli` として提供する方が効率的。
 
-#### 6B-1: サブコマンド構造の導入
+**互換性方針:** Epic #64 に従い、既存フラグ (`--info`, `--ensure-ffmpeg`, `--as-json`) と
+旧エントリポイント (`livecap-core`) は**完全に廃止**する。deprecation warning は設けない。
 
-現在の argparse を**完全に書き換え**、サブコマンド構造を導入:
+#### 6B-1: エントリポイント変更 + サブコマンド構造の導入
+
+`pyproject.toml` を更新し、新しいエントリポイントとサブコマンド構造を同時に導入:
+
+```toml
+[project]
+name = "livecap-cli"  # パッケージ名変更
+
+[project.scripts]
+livecap-cli = "livecap_core.cli:main"  # 新規（唯一のエントリポイント）
+# livecap-core は廃止（Epic #64 方針）
+```
 
 ```bash
 livecap-cli info               # 診断情報（--as-json オプション付き）
@@ -215,6 +228,10 @@ livecap-cli transcribe input.mp4 -o output.srt \
 > **デバイス表記について:** CLI では `gpu` を使用し、内部で `cuda` にマッピングする。
 > これは Issue #74 の仕様 (`auto/gpu/cpu`) に準拠し、ユーザーフレンドリーな表記を優先する。
 
+> **VAD バックエンド選択について:** VAD バックエンド選択は既に API レベルで実装済み
+> (`VADProcessor.from_language()`)。CLI では `--vad auto` がデフォルトで、
+> `--language` に基づき最適な VAD を自動選択する。
+
 **完了条件:**
 - [ ] `livecap-cli info` が動作
 - [ ] `livecap-cli devices` が動作
@@ -223,42 +240,6 @@ livecap-cli transcribe input.mp4 -o output.srt \
 - [ ] `livecap-cli transcribe --realtime --mic 0` が動作
 - [ ] `livecap-cli transcribe input.mp4 -o output.srt` が動作
 - [ ] 旧フラグ (`--info` 等) が廃止されていることを確認
-
-### Phase 6C: パッケージ名変更 (高リスク)
-
-**目的:** `livecap-core` → `livecap-cli` へのリネーム
-
-**互換性方針:** Epic #64 に従い、旧エントリポイント `livecap-core` は**完全に廃止**する。
-
-**影響範囲:**
-1. `pyproject.toml` の `name` フィールド
-2. `project.scripts` のエントリポイント名
-3. PyPI への新規パッケージ公開
-4. ドキュメント・README の更新
-5. CI/CD の更新
-
-**リスク:**
-- 既存ユーザーへの影響（pip install 名が変更）
-- PyPI での新規パッケージ登録が必要
-- インポートパス `livecap_core` は**変更しない**（Python API 互換性維持）
-
-**推奨:** Phase 6C は 6A/6B 完了後に慎重に実施
-
-**変更内容:**
-
-```toml
-[project]
-name = "livecap-cli"  # 変更
-
-[project.scripts]
-livecap-cli = "livecap_core.cli:main"  # 新規（唯一のエントリポイント）
-# livecap-core は廃止（Epic #64 方針）
-```
-
-**完了条件:**
-- [ ] `pip install livecap-cli` が動作
-- [ ] `livecap-cli transcribe ...` が動作
-- [ ] 旧エントリポイント `livecap-core` が廃止されていることを確認
 
 ---
 
@@ -273,44 +254,23 @@ livecap-cli = "livecap_core.cli:main"  # 新規（唯一のエントリポイン
 2. PulseAudio monitor (Linux)
 3. 外部ツール連携 (macOS: BlackHole)
 
-### VAD オプション
-
-VAD バックエンド選択は **既に API レベルで実装済み**:
-
-```python
-# 利用可能なバックエンド
-from livecap_core.vad.backends import SileroVAD, TenVAD, WebRTCVAD
-from livecap_core.vad import VADProcessor
-
-# 言語最適化 VAD 自動選択
-processor = VADProcessor.from_language("ja")  # → TenVAD (日本語最適)
-processor = VADProcessor.from_language("en")  # → WebRTC (英語最適)
-```
-
-**Phase 6B で追加すべき CLI オプション:**
-
-```bash
-livecap-cli transcribe --vad auto        # 言語に最適な VAD を自動選択（推奨）
-livecap-cli transcribe --vad silero      # Silero VAD
-livecap-cli transcribe --vad tenvad      # TenVAD（日本語向け）
-livecap-cli transcribe --vad webrtc      # WebRTC VAD（英語向け）
-```
-
-> **デフォルト:** `--vad auto`（`--language` に基づき `VADProcessor.from_language()` で選択）
+> **Note:** Issue #74 本文には `--realtime --system` が要件として記載されているが、
+> プラットフォーム依存性が高いためスコープ外とする。必要に応じてフォローアップ Issue を作成。
 
 ---
 
 ## 実装順序とリスク評価
 
 ```
-Phase 6A (pyproject.toml整理)  [低リスク, 0.5日]
+Phase 6A (pyproject.toml整理)           [低リスク, 0.5日]
     ↓
-Phase 6B (CLIコマンド実装)     [中リスク, 1-2日]
-    ↓
-Phase 6C (パッケージ名変更)    [高リスク, 0.5日]
+Phase 6B (CLI実装 + エントリポイント変更)  [中リスク, 1-2日]
 ```
 
-**推奨:** 6A → 6B → 6C の順で、各 Phase を別 PR として作成
+> **Note:** 当初の Phase 6C（パッケージ名変更）は Phase 6B に統合。
+> CLI 実装とエントリポイント変更を同時に行うことで効率化。
+
+**推奨:** 6A → 6B の順で、各 Phase を別 PR として作成
 
 ---
 
@@ -321,7 +281,8 @@ Phase 6C (パッケージ名変更)    [高リスク, 0.5日]
 - [ ] `all` extras 追加
 - [ ] 既存テスト通過
 
-### Phase 6B
+### Phase 6B (CLI 実装 + エントリポイント変更)
+- [ ] pyproject.toml 更新 (`name = "livecap-cli"`, エントリポイント変更)
 - [ ] サブコマンド構造導入（既存フラグは完全廃止）
 - [ ] `info` コマンド実装
 - [ ] `devices` コマンド実装
@@ -329,13 +290,9 @@ Phase 6C (パッケージ名変更)    [高リスク, 0.5日]
 - [ ] `translators` コマンド実装
 - [ ] `transcribe --realtime --mic` 実装
 - [ ] `transcribe <file> -o <output>` 実装
-- [ ] ユニットテスト追加
-- [ ] 既存テスト通過
-
-### Phase 6C
-- [ ] pyproject.toml 更新 (`name = "livecap-cli"`)
-- [ ] エントリポイント更新（`livecap-core` 廃止）
+- [ ] `--vad` オプション実装
 - [ ] ドキュメント更新
+- [ ] ユニットテスト追加
 - [ ] 既存テスト通過
 
 ---
