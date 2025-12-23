@@ -32,6 +32,7 @@ dependencies = [
   "langcodes>=3.4.0",  # BCP-47 language code parsing for ASR engines
   "librosa",
   "moviepy",
+  "numba>=0.55.0",  # Python 3.10+ support required
   "numpy",
   "onnxruntime",
   "pydub",
