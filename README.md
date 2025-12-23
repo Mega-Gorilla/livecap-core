@@ -157,6 +157,7 @@ LIVECAP_LANGUAGE=ja     # 言語
 ## ドキュメント
 
 - [CLI リファレンス](docs/reference/cli.md)
+- [API リファレンス](docs/reference/api.md) - ライブラリとして使用する際の API ドキュメント
 - [リアルタイム文字起こしガイド](docs/guides/realtime-transcription.md)
 - [API 仕様書](docs/architecture/core-api-spec.md)
 - [機能一覧](docs/reference/feature-inventory.md)

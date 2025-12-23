@@ -1,6 +1,6 @@
-# LiveCap Core Examples
+# LiveCap CLI Examples
 
-livecap-core の使用例を示すサンプルスクリプト集です。
+livecap-cli の使用例を示すサンプルスクリプト集です。
 
 ## 前提条件
 
@@ -8,7 +8,7 @@ livecap-core の使用例を示すサンプルスクリプト集です。
 
 ```bash
 # 基本インストール（PyTorch エンジン）
-pip install livecap-core[engines-torch]
+pip install livecap-cli[engines-torch]
 
 # または uv を使用
 uv sync --extra engines-torch
@@ -22,6 +22,15 @@ uv sync --extra engines-torch
 - `en/librispeech_1089-134686-0001.wav` - 英語音声（約3秒）
 
 ## サンプル一覧
+
+### ライブラリ API (`examples/library/`)
+
+livecap-cli をライブラリとして使用する基本的な例です。
+
+| ファイル | 説明 | 難易度 |
+|---------|------|--------|
+| [api_overview.py](library/api_overview.py) | 主要 API（デバイス一覧、エンジン一覧、VADConfig）の確認 | 初級 |
+| [minimal_transcription.py](library/minimal_transcription.py) | 最小限のファイル/マイク文字起こし | 初級 |
 
 ### リアルタイム文字起こし (`examples/realtime/`)
 
@@ -127,6 +136,7 @@ LIVECAP_DEVICE=cpu python examples/realtime/async_microphone.py
 
 ## 関連ドキュメント
 
+- [API リファレンス](../docs/reference/api.md) - ライブラリ API のリファレンス
 - [リアルタイム文字起こしガイド](../docs/guides/realtime-transcription.md)
 - [API 仕様書](../docs/architecture/core-api-spec.md)
 - [テストガイド](../docs/testing/README.md)
