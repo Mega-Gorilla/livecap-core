@@ -159,7 +159,9 @@ def cmd_devices(args: argparse.Namespace) -> int:
     """List available audio input devices."""
     try:
         from livecap_cli import MicrophoneSource
-        devices = MicrophoneSource.list_devices()
+
+        # Windows では WASAPI デバイスのみ表示（重複削減・低レイテンシ）
+        devices = MicrophoneSource.list_devices(prefer_wasapi=True)
 
         if not devices:
             print("No audio input devices found.")
@@ -167,7 +169,8 @@ def cmd_devices(args: argparse.Namespace) -> int:
 
         for dev in devices:
             default = " (default)" if dev.is_default else ""
-            print(f"[{dev.index}] {dev.name}{default}")
+            host_api = f" [{dev.host_api}]" if dev.host_api else ""
+            print(f"[{dev.index}] {dev.name}{default}{host_api}")
 
         return 0
     except ImportError as e:

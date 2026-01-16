@@ -27,6 +27,7 @@ class DeviceInfo:
         channels: 入力チャンネル数
         sample_rate: デフォルトサンプリングレート
         is_default: デフォルトデバイスかどうか
+        host_api: ホスト API 名（例: "MME", "Windows WASAPI", "ALSA"）
     """
 
     index: int
@@ -34,6 +35,7 @@ class DeviceInfo:
     channels: int
     sample_rate: int
     is_default: bool = False
+    host_api: Optional[str] = None
 
 
 class AudioSource(ABC):
