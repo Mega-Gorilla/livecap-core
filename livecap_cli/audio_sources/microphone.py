@@ -192,6 +192,7 @@ class MicrophoneSource(AudioSource):
         # ホスト API 情報を取得（デバイスインデックス → API 名のマッピング）
         device_to_api: dict[int, str] = {}
         wasapi_devices: Optional[set[int]] = None
+        wasapi_default_input: Optional[int] = None
         try:
             for api in sd.query_hostapis():
                 api_name = api["name"]
@@ -200,8 +201,13 @@ class MicrophoneSource(AudioSource):
                 # Windows WASAPI のデバイスを記録
                 if prefer_wasapi and sys.platform == "win32" and "WASAPI" in api_name:
                     wasapi_devices = set(api["devices"])
+                    wasapi_default_input = api.get("default_input_device")
         except Exception as e:
             logger.debug(f"Failed to query host APIs: {e}")
+
+        # prefer_wasapi モードでは WASAPI のデフォルトを使用
+        if wasapi_default_input is not None:
+            default_device = wasapi_default_input
 
         try:
             for i, dev in enumerate(sd.query_devices()):

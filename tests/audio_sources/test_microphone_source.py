@@ -136,10 +136,10 @@ class TestMicrophoneSourceListDevices:
             },
         ]
         mock_sd.query_hostapis.return_value = [
-            {"name": "MME", "devices": [0]},
-            {"name": "Windows WASAPI", "devices": [1, 2]},
+            {"name": "MME", "devices": [0], "default_input_device": 0},
+            {"name": "Windows WASAPI", "devices": [1, 2], "default_input_device": 2},
         ]
-        mock_sd.default.device = (1, None)
+        mock_sd.default.device = (0, None)  # グローバルデフォルトは MME
 
         # prefer_wasapi=True の場合
         devices = MicrophoneSource.list_devices(prefer_wasapi=True)
@@ -147,6 +147,9 @@ class TestMicrophoneSourceListDevices:
         assert all(d.host_api == "Windows WASAPI" for d in devices)
         assert devices[0].index == 1
         assert devices[1].index == 2
+        # WASAPI のデフォルト（index=2）が is_default=True
+        assert devices[0].is_default is False
+        assert devices[1].is_default is True
 
     @patch("livecap_cli.audio_sources.microphone.sys")
     @patch("livecap_cli.audio_sources.microphone.sd")
